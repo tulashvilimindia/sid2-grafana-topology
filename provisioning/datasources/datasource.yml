@@ -1,0 +1,60 @@
+apiVersion: 1
+
+datasources:
+  - name: TestData DB
+    type: testdata
+    uid: testdata
+    access: proxy
+
+  # Infinity datasource — connects to production Grafana REST API
+  - name: Production Grafana API
+    type: yesoreyeram-infinity-datasource
+    uid: prod-grafana-infinity
+    isDefault: false
+    access: proxy
+    jsonData:
+      auth_method: bearerToken
+      allowedHosts:
+        - ${GRAFANA_URL}
+    secureJsonData:
+      bearerToken: ${GRAFANA_API_TOKEN}
+
+  # Prometheus datasource — proxied through production Grafana
+  - name: Production Prometheus
+    type: prometheus
+    uid: prod-prometheus
+    isDefault: true
+    access: proxy
+    url: ${GRAFANA_URL}/api/datasources/proxy/uid/prometheus
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+      httpHeaderName1: Authorization
+    secureJsonData:
+      httpHeaderValue1: Bearer ${GRAFANA_API_TOKEN}
+
+  # New Relic — direct Infinity datasource
+  - name: New Relic
+    type: yesoreyeram-infinity-datasource
+    uid: nr-infinity
+    access: proxy
+    jsonData:
+      auth_method: apiKey
+      apiKeyKey: API-Key
+      apiKeyType: header
+      allowedHosts:
+        - https://api.newrelic.com
+    secureJsonData:
+      apiKeyValue: ${NR_API_KEY}
+
+  # CloudWatch — direct with AWS credentials
+  - name: AWS CloudWatch
+    type: cloudwatch
+    uid: local-cloudwatch
+    access: proxy
+    jsonData:
+      authType: keys
+      defaultRegion: ${AWS_REGION:-us-east-1}
+    secureJsonData:
+      accessKey: ${AWS_ACCESS_KEY}
+      secretKey: ${AWS_SECRET_KEY}

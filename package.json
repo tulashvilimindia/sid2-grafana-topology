@@ -1,0 +1,83 @@
+{
+  "name": "mtulashvili-sre-topology-panel",
+  "version": "1.0.0",
+  "description": "E2E Topology Diagram Panel with live metrics, drag-and-drop, animated flow connections, and expandable metric panels",
+  "scripts": {
+    "build": "cross-env TS_NODE_COMPILER_OPTIONS=\"{\\\"module\\\":\\\"commonjs\\\"}\" webpack -c ./.config/webpack/webpack.config.ts --env production",
+    "dev": "cross-env TS_NODE_COMPILER_OPTIONS=\"{\\\"module\\\":\\\"commonjs\\\"}\" webpack -w -c ./.config/webpack/webpack.config.ts --env development",
+    "test": "jest --passWithNoTests",
+    "test:ci": "jest --passWithNoTests --maxWorkers 4",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --cache --ignore-path ./.gitignore --ext .js,.jsx,.ts,.tsx .",
+    "sign": "npx @grafana/sign-plugin@latest",
+    "server": "docker compose up --build",
+    "analyze": "cross-env TS_NODE_COMPILER_OPTIONS=\"{\\\"module\\\":\\\"commonjs\\\"}\" webpack -c ./.config/webpack/webpack.config.ts --env production --profile --json > stats.json && npx webpack-bundle-analyzer stats.json dist --mode static --report docs/bundle-report-v1.1.html --no-open"
+  },
+  "author": "Mindia Tulashvili",
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "@grafana/eslint-config": "7.0.0",
+    "@grafana/plugin-e2e": "3.4.12",
+    "@grafana/tsconfig": "2.0.1",
+    "@swc/core": "1.15.24",
+    "@swc/helpers": "0.5.21",
+    "@swc/jest": "0.2.39",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "14.3.1",
+    "@types/jest": "29.5.14",
+    "@types/lodash": "4.17.24",
+    "@types/node": "20.19.39",
+    "@types/react": "18.3.28",
+    "@types/react-dom": "18.3.7",
+    "copy-webpack-plugin": "11.0.0",
+    "cross-env": "^10.1.0",
+    "css-loader": "6.11.0",
+    "eslint": "8.57.1",
+    "eslint-webpack-plugin": "4.2.0",
+    "fork-ts-checker-webpack-plugin": "9.1.0",
+    "glob": "10.5.0",
+    "identity-obj-proxy": "3.0.0",
+    "jest": "29.7.0",
+    "jest-environment-jsdom": "29.7.0",
+    "prettier": "3.8.2",
+    "replace-in-file-webpack-plugin": "1.0.6",
+    "sass": "1.99.0",
+    "sass-loader": "13.3.3",
+    "style-loader": "3.3.4",
+    "swc-loader": "0.2.7",
+    "ts-node": "10.9.2",
+    "tsconfig-paths": "4.2.0",
+    "typescript": "5.9.3",
+    "webpack": "5.106.1",
+    "webpack-bundle-analyzer": "4.10.2",
+    "webpack-cli": "5.1.4",
+    "webpack-livereload-plugin": "3.0.2",
+    "webpack-virtual-modules": "0.6.2"
+  },
+  "dependencies": {
+    "@grafana/data": "12.0.10",
+    "@grafana/runtime": "12.0.10",
+    "@grafana/ui": "12.0.10",
+    "lodash": "4.18.1",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  },
+  "overrides": {
+    "lodash": "4.18.1",
+    "dompurify": "3.4.0",
+    "immutable": "5.1.5",
+    "serialize-javascript": "7.0.5",
+    "minimatch": "10.2.5",
+    "@tootallnate/once": "3.0.1"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "ts-node": {
+    "compilerOptions": {
+      "module": "commonjs",
+      "moduleResolution": "node",
+      "esModuleInterop": true
+    }
+  }
+}

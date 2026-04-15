@@ -1,0 +1,121 @@
+/* ============ EDITOR LIST ============ */
+.topo-editor-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 0;
+  margin-bottom: 8px;
+}
+
+.topo-editor-header-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #d8dee9;
+}
+
+.topo-editor-count {
+  font-size: 10px;
+  color: #616e88;
+  margin-left: 4px;
+}
+
+/* ============ EDITOR CARDS ============ */
+.topo-editor-card {
+  margin-bottom: 4px;
+}
+
+.topo-editor-card-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+}
+
+.topo-editor-card-badge {
+  font-size: 8px;
+  font-weight: 600;
+  padding: 1px 4px;
+  border-radius: 3px;
+  background: #2d3748;
+  color: #88c0d0;
+  margin-right: 4px;
+}
+
+/* ============ FIELD LAYOUT ============ */
+.topo-editor-field {
+  margin-bottom: 6px;
+}
+
+.topo-editor-field label {
+  font-size: 11px;
+  color: #88c0d0;
+  margin-bottom: 2px;
+  display: block;
+}
+
+.topo-editor-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.topo-editor-section-title {
+  font-size: 10px;
+  font-weight: 500;
+  color: #616e88;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 6px 0 2px;
+  border-bottom: 1px solid #2d3748;
+  margin-bottom: 4px;
+}
+
+/* ============ THRESHOLD INLINE ============ */
+.topo-threshold-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.topo-threshold-color {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  cursor: pointer;
+  border: 1.5px solid #2d3748;
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.topo-threshold-color:hover {
+  transform: scale(1.2);
+}
+
+.topo-threshold-color.green { background: #a3be8c; }
+.topo-threshold-color.yellow { background: #ebcb8b; }
+.topo-threshold-color.red { background: #bf616a; }
+
+.topo-threshold-value {
+  flex: 1;
+}
+
+/* ============ METRIC BADGE ============ */
+.topo-metric-badge {
+  font-size: 7px;
+  font-weight: 600;
+  padding: 1px 3px;
+  border-radius: 2px;
+  background: #5e81ac;
+  color: #e5e9f0;
+  margin-left: 4px;
+}
+
+/* ============ EMPTY STATE ============ */
+.topo-editor-empty {
+  text-align: center;
+  padding: 16px 8px;
+  color: #4c566a;
+  font-size: 11px;
+}

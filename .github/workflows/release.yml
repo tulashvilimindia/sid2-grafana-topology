@@ -1,0 +1,94 @@
+name: Release
+
+# Tag-triggered signed release. Set GRAFANA_ACCESS_POLICY_TOKEN and
+# GRAFANA_ROOT_URLS as repository secrets. See docs/ci-secrets.md.
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, sign, and release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 24
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm run test:ci
+
+      - name: Build production bundle
+        run: npm run build
+
+      - name: Inject production rootUrls into dist/plugin.json
+        env:
+          GRAFANA_ROOT_URLS: ${{ secrets.GRAFANA_ROOT_URLS }}
+        run: |
+          if [ -z "$GRAFANA_ROOT_URLS" ]; then
+            echo "ERROR: GRAFANA_ROOT_URLS secret is empty. Set a comma-separated list of URLs in repo settings."
+            exit 1
+          fi
+          node -e "
+            const fs = require('fs');
+            const path = 'dist/plugin.json';
+            const p = JSON.parse(fs.readFileSync(path, 'utf8'));
+            p.rootUrls = process.env.GRAFANA_ROOT_URLS.split(',').map(s => s.trim()).filter(Boolean);
+            if (p.rootUrls.length === 0) {
+              console.error('ERROR: parsed rootUrls is empty after split');
+              process.exit(1);
+            }
+            fs.writeFileSync(path, JSON.stringify(p, null, 2));
+            console.log('Injected rootUrls:', p.rootUrls);
+          "
+
+      - name: Sign plugin
+        env:
+          GRAFANA_ACCESS_POLICY_TOKEN: ${{ secrets.GRAFANA_ACCESS_POLICY_TOKEN }}
+        run: |
+          if [ -z "$GRAFANA_ACCESS_POLICY_TOKEN" ]; then
+            echo "ERROR: GRAFANA_ACCESS_POLICY_TOKEN secret is empty. Generate one at grafana.com with plugins:write scope."
+            exit 1
+          fi
+          npx @grafana/sign-plugin@latest
+
+      - name: Verify MANIFEST.txt was created
+        run: |
+          test -f dist/MANIFEST.txt || { echo "MANIFEST.txt missing — plugin not signed"; exit 1; }
+          echo "Plugin signed successfully:"
+          head -5 dist/MANIFEST.txt
+
+      - name: Package release zip
+        run: |
+          VERSION=${GITHUB_REF#refs/tags/v}
+          ZIP_NAME="mtulashvili-sre-topology-panel-${VERSION}.zip"
+          mv dist mtulashvili-sre-topology-panel
+          zip -r "$ZIP_NAME" mtulashvili-sre-topology-panel
+          echo "ZIP_NAME=$ZIP_NAME" >> $GITHUB_ENV
+          ls -lh "$ZIP_NAME"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ env.ZIP_NAME }}
+          generate_release_notes: true
+          fail_on_unmatched_files: true

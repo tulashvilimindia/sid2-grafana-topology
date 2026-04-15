@@ -1,0 +1,46 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Dependencies
+node_modules/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+.pnp.*
+
+# Build output
+dist/
+artifacts/
+work/
+
+# Test output
+coverage/
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+/playwright/.auth/
+
+# IDE
+.idea
+
+# Cache
+.eslintcache
+
+# Bundle analysis outputs
+stats.json
+/bundle-report.html
+
+# Local environment / secrets (NEVER committed)
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db

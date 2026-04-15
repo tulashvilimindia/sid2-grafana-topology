@@ -1,0 +1,512 @@
+/* ============ PANEL ============ */
+.topology-panel {
+  background: #13161a;
+  border-radius: 4px;
+  overflow: hidden;
+  font-family: 'Inter', -apple-system, sans-serif;
+  color: #d8dee9;
+}
+
+/* ============ TOOLBAR ============ */
+.topology-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #1e2228;
+  height: 36px;
+}
+
+.topology-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: #88c0d0;
+}
+
+/* ============ HEALTH SUMMARY BAR ============ */
+.topology-health-bar {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 8px;
+  padding: 2px 6px;
+  background: #1e2228;
+  border-radius: 8px;
+}
+
+.topology-health-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  cursor: default;
+  transition: transform 0.15s;
+}
+
+.topology-health-dot:hover {
+  transform: scale(1.5);
+}
+
+/* ============ TIME TRAVEL BANNER ============ */
+.topology-time-banner {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 12px;
+  background: #3d2e00;
+  border-bottom: 1px solid #ebcb8b44;
+  height: 28px;
+  font-size: 11px;
+  color: #ebcb8b;
+}
+
+.topology-toolbar-spacer {
+  flex: 1;
+}
+
+.topology-btn {
+  font-size: 10px;
+  color: #616e88;
+  background: #1e2228;
+  border: 1px solid #2d3748;
+  border-radius: 5px;
+  padding: 3px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.topology-btn:hover {
+  background: #2d3748;
+  color: #d8dee9;
+}
+
+/* ============ CANVAS ============ */
+.topology-canvas {
+  background: #13161a;
+}
+
+/* ============ FLOW ANIMATION ============ */
+@keyframes topoFlow {
+  to { stroke-dashoffset: -16; }
+}
+
+@keyframes topoPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+/* ============ GROUP CONTAINERS ============ */
+.topology-group-label {
+  position: absolute;
+  top: -9px;
+  left: 12px;
+  font-size: 9px;
+  color: #4c566a;
+  background: #13161a;
+  padding: 0 6px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+}
+
+/* ============ NODES ============ */
+.topology-node {
+  border-radius: 8px;
+  border: 1.5px solid #2d3748;
+  background: #1a1e24;
+  cursor: grab;
+  transition: box-shadow 0.2s, border-color 0.2s;
+  overflow: hidden;
+  user-select: none;
+}
+
+.topology-node:hover {
+  border-color: #4c566a;
+  box-shadow: 0 0 0 1px rgba(76, 86, 106, 0.3);
+}
+
+.topology-node.dragging {
+  cursor: grabbing;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  border-color: #5e81ac;
+}
+
+.topology-node.st-ok { border-left: 3px solid #a3be8c; }
+.topology-node.st-warning { border-left: 3px solid #ebcb8b; }
+.topology-node.st-critical { border-left: 3px solid #bf616a; }
+.topology-node.st-unknown { border-left: 3px solid #4c566a; }
+.topology-node.st-nodata { border-left: 3px solid #4c566a; }
+
+/* ============ NODE HEADER ============ */
+.topo-node-header {
+  padding: 6px 8px 3px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.topo-node-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 5px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 9px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+
+.topology-node.compact .topo-node-icon {
+  width: 18px;
+  height: 18px;
+  font-size: 9px;
+}
+
+.topo-node-info {
+  min-width: 0;
+  flex: 1;
+}
+
+.topo-node-name {
+  font-size: 11px;
+  font-weight: 500;
+  color: #e5e9f0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.topo-node-role {
+  font-size: 9px;
+  color: #616e88;
+}
+
+.topo-node-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.topo-node-dot.ok { background: #a3be8c; }
+.topo-node-dot.warning { background: #ebcb8b; }
+.topo-node-dot.critical { background: #bf616a; animation: topoPulse 1.5s ease-in-out infinite; }
+.topo-node-dot.critical.no-pulse { animation: none; }
+.topo-node-dot.unknown { background: #4c566a; }
+.topo-node-dot.nodata { background: #4c566a; }
+
+/* ============ METRICS ============ */
+.topo-node-metrics {
+  padding: 2px 8px 4px;
+  display: flex;
+  gap: 2px;
+  flex-wrap: wrap;
+}
+
+.topo-metric {
+  background: #12151a;
+  border-radius: 3px;
+  padding: 2px 4px;
+  min-width: 36px;
+  flex: 1;
+}
+
+.topo-metric-label {
+  font-size: 9px;
+  color: #4c566a;
+  text-transform: uppercase;
+  letter-spacing: 0.3px;
+}
+
+.topo-metric-value {
+  font-size: 10px;
+  font-weight: 500;
+}
+
+.topo-metric-value.ok { color: #a3be8c; }
+.topo-metric-value.warning { color: #ebcb8b; }
+.topo-metric-value.critical { color: #bf616a; }
+.topo-metric-value.unknown { color: #616e88; }
+
+/* ============ SPARKLINE ============ */
+.topo-sparkline {
+  display: flex;
+  align-items: flex-end;
+  gap: 1px;
+  height: 14px;
+  margin-top: 2px;
+}
+
+.topo-spark-bar {
+  flex: 1;
+  min-width: 2px;
+  border-radius: 1px 1px 0 0;
+  opacity: 0.7;
+}
+
+/* ============ EXPAND HINT ============ */
+.topo-node-hint {
+  font-size: 9px;
+  color: #3b4252;
+  text-align: center;
+  padding: 1px 0 3px;
+}
+
+.topology-node:hover .topo-node-hint {
+  color: #5e81ac;
+}
+
+/* ============ EXPANDED METRICS ============ */
+.topo-node-expanded {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
+}
+
+.topology-node.open .topo-node-expanded {
+  max-height: 500px;
+}
+
+.topology-node.open .topo-node-hint {
+  display: none;
+}
+
+.topo-node-expanded-inner {
+  padding: 4px 8px 6px;
+  border-top: 1px solid #2d3748;
+}
+
+.topo-exp-section {
+  font-size: 9px;
+  color: #4c566a;
+  text-transform: uppercase;
+  letter-spacing: 0.4px;
+  padding: 3px 0 1px;
+  border-bottom: 1px solid #1e2228;
+  margin-bottom: 2px;
+}
+
+.topo-exp-row {
+  display: flex;
+  gap: 2px;
+  margin-bottom: 2px;
+  flex-wrap: wrap;
+}
+
+/* ============ NODE POPUP ============ */
+/* Positioning is handled by the wrapper <div> in TopologyPanel.tsx via
+   inline style (dynamic click-point placement). The class intentionally
+   leaves `position` and `z-index` out — the wrapper's z-index: 100 wins
+   over anything declared here anyway. */
+.topology-popup {
+  background: #1a1e24;
+  border: 1px solid #2d3748;
+  border-radius: 8px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+  min-width: 220px;
+  max-width: 260px;
+  padding: 8px;
+}
+
+.topology-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid #2d3748;
+  margin-bottom: 6px;
+}
+
+.topology-popup-title {
+  font-size: 12px;
+  font-weight: 500;
+  color: #e5e9f0;
+}
+
+.topology-popup-close {
+  cursor: pointer;
+  color: #616e88;
+  font-size: 14px;
+  padding: 0 4px;
+  background: none;
+  border: none;
+  font-family: inherit;
+}
+
+.topology-popup-close:hover {
+  color: #bf616a;
+}
+
+.topology-popup-loading {
+  font-size: 10px;
+  color: #616e88;
+  text-align: center;
+  padding: 8px 0;
+}
+
+.topology-popup-metric {
+  margin-bottom: 6px;
+}
+
+.topology-popup-metric-header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10px;
+  color: #88c0d0;
+  margin-bottom: 2px;
+}
+
+.topology-popup-metric-value {
+  font-weight: 500;
+  color: #d8dee9;
+}
+
+/* ─── Reduced motion (accessibility) ──────────────────────────────────── */
+/*
+ * Users with vestibular disorders set the OS-level prefers-reduced-motion
+ * preference. Honor it by disabling the continuous flow animation on edges,
+ * the critical node pulse, and any node transitions. Static status colors
+ * and node shapes still convey all the information — motion is purely
+ * decorative in this plugin.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .topology-node {
+    transition: none;
+  }
+  .topo-node-dot.critical {
+    animation: none;
+  }
+  /* Flow overlay paths set animation via inline style, so we target them
+     with an attribute selector and use !important to override. */
+  [style*="topoFlow"] {
+    animation: none !important;
+  }
+}
+
+/* ============ A11Y: VISUALLY HIDDEN TEXT FOR SCREEN READERS ============ */
+/*
+ * Standard "visually-hidden" pattern — element is in the accessibility
+ * tree and read by screen readers but invisible on screen. Used as a
+ * defense-in-depth text label next to color-only status indicators so
+ * colorblind users and SR users both get the status.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ─── Mobile responsive layout (max-width: 768px) ─────────────────────── */
+/*
+ * Media queries key off the viewport, not the panel container. On a phone
+ * the whole Grafana viewport is narrow, so these rules kick in. On a wide
+ * desktop with a narrow panel column they don't — for that case the panel
+ * already looks fine at any width because node cards are fixed-width.
+ *
+ * Goals: collapse toolbar to wrap instead of overflow, shrink node cards,
+ * render the popup as a bottom-sheet, and hand touch gestures to the
+ * browser for native pan/pinch-zoom instead of custom pointer drag.
+ */
+@media (max-width: 768px) {
+  /* Canvas: let the browser handle pan and pinch-zoom natively so users
+     don't fight the custom drag handlers. Complex drag (move a node) is
+     sacrificed in favor of reliable touch interaction. */
+  .topology-panel {
+    touch-action: pan-x pan-y pinch-zoom;
+  }
+
+  /* Toolbar wraps instead of overflowing when buttons don't fit. */
+  .topology-toolbar {
+    flex-wrap: wrap;
+    gap: 4px;
+    padding: 6px;
+    min-height: auto;
+  }
+  .topology-title {
+    font-size: 11px;
+  }
+  .topology-toolbar-spacer {
+    display: none;
+  }
+  .topology-health-bar {
+    gap: 2px;
+  }
+  .topology-health-dot {
+    width: 8px;
+    height: 8px;
+  }
+  .topology-btn {
+    font-size: 10px;
+    padding: 2px 6px;
+    touch-action: manipulation; /* kill the 300ms tap delay */
+  }
+
+  /* Node cards shrink: smaller fonts, tighter padding. */
+  .topology-node {
+    min-width: 0;
+  }
+  .topo-node-header {
+    padding: 4px 6px;
+    gap: 4px;
+  }
+  .topo-node-icon {
+    width: 18px;
+    height: 18px;
+    font-size: 12px;
+  }
+  .topo-node-name {
+    font-size: 11px;
+  }
+  .topo-node-role {
+    font-size: 9px;
+  }
+  .topo-node-metrics {
+    padding: 4px 6px;
+    font-size: 9px;
+  }
+  .topo-node-hint {
+    display: none; /* hover hint is meaningless on touch */
+  }
+
+  /*
+   * Popup becomes a bottom-sheet on mobile: pinned to the bottom of the
+   * panel, full-width, with a rounded top edge. Overrides the wrapper's
+   * inline positioning set by TopologyPanel (which targets click-point
+   * positioning on desktop).
+   */
+  .topology-panel > div:has(> .topology-popup) {
+    position: absolute !important;
+    left: 0 !important;
+    right: 0 !important;
+    top: auto !important;
+    bottom: 0 !important;
+    z-index: 100;
+  }
+  .topology-popup {
+    width: 100% !important;
+    max-width: 100% !important;
+    max-height: 60vh;
+    border-radius: 8px 8px 0 0;
+    overflow-y: auto;
+    box-shadow: 0 -4px 12px rgba(0, 0, 0, 0.4);
+  }
+  .topology-popup-header {
+    padding: 8px 10px;
+    position: sticky;
+    top: 0;
+    background: #1a1e24;
+    z-index: 1;
+  }
+  .topology-popup-close {
+    font-size: 20px;
+    padding: 0 8px;
+    touch-action: manipulation;
+  }
+}
