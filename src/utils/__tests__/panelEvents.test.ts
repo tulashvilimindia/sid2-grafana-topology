@@ -239,4 +239,42 @@ describe('panelEvents topology-import pub/sub', () => {
     expect(clicks).toEqual(['a']);
     expect(imports).toHaveLength(1);
   });
+
+  // ─── section hint (hybrid click-ops sidebar-redirect) ─────────────────
+
+  test('emitNodeEditRequest without section — handler receives undefined section', () => {
+    const handler = jest.fn();
+    const unsub = onNodeEditRequest(handler);
+    emitNodeEditRequest('n-1');
+    unsub();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('n-1', undefined);
+  });
+
+  test('emitNodeEditRequest with section — handler receives the section string', () => {
+    const handler = jest.fn();
+    const unsub = onNodeEditRequest(handler);
+    emitNodeEditRequest('n-1', 'alertMatchers');
+    unsub();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('n-1', 'alertMatchers');
+  });
+
+  test('emitEdgeEditRequest without section — handler receives undefined section', () => {
+    const handler = jest.fn();
+    const unsub = onEdgeEditRequest(handler);
+    emitEdgeEditRequest('e-1');
+    unsub();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('e-1', undefined);
+  });
+
+  test('emitEdgeEditRequest with section — handler receives the section string', () => {
+    const handler = jest.fn();
+    const unsub = onEdgeEditRequest(handler);
+    emitEdgeEditRequest('e-1', 'thresholds');
+    unsub();
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith('e-1', 'thresholds');
+  });
 });

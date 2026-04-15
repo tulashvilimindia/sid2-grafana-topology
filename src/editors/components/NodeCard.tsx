@@ -4,6 +4,7 @@ import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { TopologyNode, NodeMetricConfig, NodeGroup, ObservabilityLink, NODE_TYPE_CONFIG, ACCENT_COLOR } from '../../types';
 import { MetricEditor } from './MetricEditor';
 import { getNodeTypeOptions, findNodeGroup, generateId, sanitizeLabel } from '../utils/editorUtils';
+import { NodeEditSection } from '../../utils/panelEvents';
 import '../editors.css';
 
 interface Props {
@@ -14,6 +15,12 @@ interface Props {
   onChange: (updated: TopologyNode) => void;
   onDelete: () => void;
   onDuplicate?: () => void;
+  /**
+   * When set, programmatically expands the matching sub-section of the
+   * card (Metrics, Advanced) the next time the card becomes open. Used
+   * by right-click context-menu section redirects.
+   */
+  sectionHint?: NodeEditSection;
 }
 
 // ─── Hook: discover jobs and instances from a Prometheus datasource ───
@@ -100,11 +107,25 @@ function useMetricDiscovery(datasourceUid: string, job: string, instance: string
   return { metrics, loading };
 }
 
-export const NodeCard: React.FC<Props> = ({ node, groups, isOpen, onToggle, onChange, onDelete, onDuplicate }) => {
+export const NodeCard: React.FC<Props> = ({ node, groups, isOpen, onToggle, onChange, onDelete, onDuplicate, sectionHint }) => {
   // ─── State ───
   const [expandedMetrics, setExpandedMetrics] = useState<Set<string>>(new Set());
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [showMetrics, setShowMetrics] = useState(false);
+
+  // Open the matching sub-section when a section-targeted edit request
+  // arrives via NodesEditor (sectionHint prop). Only acts when the card
+  // is already open. 'metrics' → Metrics section; 'advanced' /
+  // 'alertMatchers' / 'observabilityLinks' all map to the Advanced section
+  // (alert matchers and observability links both live inside Advanced).
+  useEffect(() => {
+    if (!isOpen || !sectionHint) { return; }
+    if (sectionHint === 'metrics') {
+      setShowMetrics(true);
+    } else if (sectionHint === 'advanced' || sectionHint === 'alertMatchers' || sectionHint === 'observabilityLinks') {
+      setShowAdvanced(true);
+    }
+  }, [isOpen, sectionHint]);
 
   // ─── Discovery state (for new/empty nodes) ───
   const [dsUid, setDsUid] = useState('');

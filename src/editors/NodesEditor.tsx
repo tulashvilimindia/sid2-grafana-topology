@@ -5,7 +5,7 @@ import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { TopologyPanelOptions, TopologyNode, NodeMetricConfig } from '../types';
 import { NodeCard } from './components/NodeCard';
 import { generateId, sanitizeLabel } from './utils/editorUtils';
-import { onNodeClicked, onNodeEditRequest, emitOrphanEdgeCleanup, emitTopologyImport } from '../utils/panelEvents';
+import { onNodeClicked, onNodeEditRequest, emitOrphanEdgeCleanup, emitTopologyImport, NodeEditSection } from '../utils/panelEvents';
 import './editors.css';
 
 type Props = StandardEditorProps<TopologyNode[], object, TopologyPanelOptions>;
@@ -353,6 +353,11 @@ export const NodesEditor: React.FC<Props> = ({ value, onChange, context }) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [filterText, setFilterText] = useState('');
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  // Sticky per-node section hint: when a section-targeted edit request
+  // arrives, record which section the requester wants opened inside that
+  // node's card. NodeCard subscribes to its own entry via its sectionHint
+  // prop and opens the matching CollapsableSection via useEffect.
+  const [sectionHintByNode, setSectionHintByNode] = useState<Map<string, NodeEditSection | undefined>>(new Map());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Canvas-sidebar sync: auto-expand node clicked on canvas
@@ -373,12 +378,20 @@ export const NodesEditor: React.FC<Props> = ({ value, onChange, context }) => {
   const cardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
   useEffect(() => {
-    return onNodeEditRequest((nodeId) => {
+    return onNodeEditRequest((nodeId, section) => {
       // Ensure the card is expanded so the user sees its content after scrolling
       setExpandedIds((prev) => {
         if (prev.has(nodeId)) { return prev; }
         const next = new Set(prev);
         next.add(nodeId);
+        return next;
+      });
+      // Record the section hint so the matching NodeCard's useEffect can
+      // open the sub-section. Creating a new Map each time ensures the
+      // downstream prop comparison sees the change.
+      setSectionHintByNode((prev) => {
+        const next = new Map(prev);
+        next.set(nodeId, section);
         return next;
       });
       // Defer the scroll one tick so any newly-rendered expanded content is laid out
@@ -572,6 +585,7 @@ export const NodesEditor: React.FC<Props> = ({ value, onChange, context }) => {
             onChange={handleChange}
             onDelete={() => handleDeleteRequest(node.id)}
             onDuplicate={() => handleDuplicate(node)}
+            sectionHint={sectionHintByNode.get(node.id)}
           />
         </div>
       ))}

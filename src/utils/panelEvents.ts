@@ -16,12 +16,20 @@
 
 import { TopologyPanelOptions } from '../types';
 
+/** Sub-sections of the NodeCard that a section-targeted edit request can open. */
+export type NodeEditSection = 'metrics' | 'advanced' | 'alertMatchers' | 'observabilityLinks';
+
+/** Sub-sections of the EdgeCard that a section-targeted edit request can open. */
+export type EdgeEditSection = 'metric' | 'thresholds' | 'stateMap' | 'visual';
+
 type NodeClickHandler = (nodeId: string) => void;
+type NodeEditRequestHandler = (nodeId: string, section?: NodeEditSection) => void;
+type EdgeEditRequestHandler = (edgeId: string, section?: EdgeEditSection) => void;
 type TopologyImportHandler = (payload: Partial<TopologyPanelOptions>) => void;
 
 const nodeClickSubscribers = new Set<NodeClickHandler>();
-const nodeEditRequestSubscribers = new Set<NodeClickHandler>();
-const edgeEditRequestSubscribers = new Set<NodeClickHandler>();
+const nodeEditRequestSubscribers = new Set<NodeEditRequestHandler>();
+const edgeEditRequestSubscribers = new Set<EdgeEditRequestHandler>();
 const orphanEdgeCleanupSubscribers = new Set<NodeClickHandler>();
 const topologyImportSubscribers = new Set<TopologyImportHandler>();
 
@@ -57,10 +65,10 @@ export function onNodeClicked(handler: NodeClickHandler): () => void {
  * that I noticed this node." The NodesEditor subscriber scrolls the matching
  * card into view and expands it.
  */
-export function emitNodeEditRequest(nodeId: string): void {
+export function emitNodeEditRequest(nodeId: string, section?: NodeEditSection): void {
   nodeEditRequestSubscribers.forEach((handler) => {
     try {
-      handler(nodeId);
+      handler(nodeId, section);
     } catch (err) {
       console.warn('[topology] panelEvents edit-request handler threw', err);
     }
@@ -68,10 +76,15 @@ export function emitNodeEditRequest(nodeId: string): void {
 }
 
 /**
- * Subscribe to node-edit-request events.
+ * Subscribe to node-edit-request events. The handler receives an
+ * optional `section` hint so subscribers can open a specific
+ * sub-section of the NodeCard (metrics, advanced, alertMatchers,
+ * observabilityLinks). When undefined, only the whole card is opened —
+ * backward-compatible with callers that don't care about targeting.
+ *
  * Returns an unsubscribe function — call it in your useEffect cleanup.
  */
-export function onNodeEditRequest(handler: NodeClickHandler): () => void {
+export function onNodeEditRequest(handler: NodeEditRequestHandler): () => void {
   nodeEditRequestSubscribers.add(handler);
   return () => {
     nodeEditRequestSubscribers.delete(handler);
@@ -85,10 +98,10 @@ export function onNodeEditRequest(handler: NodeClickHandler): () => void {
  * scrolls the matching card into view + expands it — the mirror image of
  * onNodeEditRequest.
  */
-export function emitEdgeEditRequest(edgeId: string): void {
+export function emitEdgeEditRequest(edgeId: string, section?: EdgeEditSection): void {
   edgeEditRequestSubscribers.forEach((handler) => {
     try {
-      handler(edgeId);
+      handler(edgeId, section);
     } catch (err) {
       console.warn('[topology] panelEvents edge-edit-request handler threw', err);
     }
@@ -96,10 +109,13 @@ export function emitEdgeEditRequest(edgeId: string): void {
 }
 
 /**
- * Subscribe to edge-edit-request events.
+ * Subscribe to edge-edit-request events. The handler receives an
+ * optional `section` hint so subscribers can open a specific
+ * sub-section of the EdgeCard (metric, thresholds, stateMap, visual).
+ *
  * Returns an unsubscribe function — call it in your useEffect cleanup.
  */
-export function onEdgeEditRequest(handler: NodeClickHandler): () => void {
+export function onEdgeEditRequest(handler: EdgeEditRequestHandler): () => void {
   edgeEditRequestSubscribers.add(handler);
   return () => {
     edgeEditRequestSubscribers.delete(handler);

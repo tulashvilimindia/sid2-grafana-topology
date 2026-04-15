@@ -4,7 +4,7 @@ import { Button, Input } from '@grafana/ui';
 import { TopologyPanelOptions, TopologyEdge, DEFAULT_EDGE } from '../types';
 import { EdgeCard } from './components/EdgeCard';
 import { generateId } from './utils/editorUtils';
-import { onEdgeEditRequest } from '../utils/panelEvents';
+import { onEdgeEditRequest, EdgeEditSection } from '../utils/panelEvents';
 import './editors.css';
 
 type Props = StandardEditorProps<TopologyEdge[], object, TopologyPanelOptions>;
@@ -15,6 +15,8 @@ export const EdgesEditor: React.FC<Props> = ({ value, onChange, context }) => {
   const nodes = useMemo(() => context.options?.nodes || [], [context.options?.nodes]);
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
   const [filterText, setFilterText] = useState('');
+  // Sticky per-edge section hint (mirror of NodesEditor pattern)
+  const [sectionHintByEdge, setSectionHintByEdge] = useState<Map<string, EdgeEditSection | undefined>>(new Map());
 
   // Filter edges by source/target node name, type, or id. Node-name lookup
   // uses a Map so the filter stays O(E) instead of O(E*N).
@@ -52,11 +54,16 @@ export const EdgesEditor: React.FC<Props> = ({ value, onChange, context }) => {
   const cardRefs = useRef<Map<string, HTMLDivElement | null>>(new Map());
 
   useEffect(() => {
-    return onEdgeEditRequest((edgeId) => {
+    return onEdgeEditRequest((edgeId, section) => {
       setExpandedIds((prev) => {
         if (prev.has(edgeId)) { return prev; }
         const next = new Set(prev);
         next.add(edgeId);
+        return next;
+      });
+      setSectionHintByEdge((prev) => {
+        const next = new Map(prev);
+        next.set(edgeId, section);
         return next;
       });
       setTimeout(() => {
@@ -150,6 +157,7 @@ export const EdgesEditor: React.FC<Props> = ({ value, onChange, context }) => {
             onChange={handleChange}
             onDelete={() => handleDelete(edge.id)}
             onDuplicate={() => handleDuplicate(edge)}
+            sectionHint={sectionHintByEdge.get(edge.id)}
           />
         </div>
       ))}

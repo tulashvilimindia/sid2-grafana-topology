@@ -4,6 +4,7 @@ import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { TopologyEdge, TopologyNode, FlowSpeed, DatasourceQueryConfig, EdgeMetricConfig } from '../../types';
 import { ThresholdList } from './ThresholdList';
 import { getNodeSelectOptions } from '../utils/editorUtils';
+import { EdgeEditSection } from '../../utils/panelEvents';
 import '../editors.css';
 
 const CLOUDWATCH_STATS = [
@@ -69,13 +70,30 @@ interface Props {
   onChange: (updated: TopologyEdge) => void;
   onDelete: () => void;
   onDuplicate?: () => void;
+  /** Programmatically expand a sub-section when a section-targeted edit request lands. */
+  sectionHint?: EdgeEditSection;
 }
 
-export const EdgeCard: React.FC<Props> = ({ edge, nodes, isOpen, onToggle, onChange, onDelete, onDuplicate }) => {
+export const EdgeCard: React.FC<Props> = ({ edge, nodes, isOpen, onToggle, onChange, onDelete, onDuplicate, sectionHint }) => {
   const [showMetric, setShowMetric] = useState(false);
   const [showVisual, setShowVisual] = useState(false);
   const [showThresholds, setShowThresholds] = useState(false);
   const [showStateMap, setShowStateMap] = useState(false);
+
+  // Open the matching sub-section when a section-targeted edit request
+  // arrives via EdgesEditor. Only acts when the card is already open.
+  useEffect(() => {
+    if (!isOpen || !sectionHint) { return; }
+    if (sectionHint === 'metric') {
+      setShowMetric(true);
+    } else if (sectionHint === 'thresholds') {
+      setShowThresholds(true);
+    } else if (sectionHint === 'stateMap') {
+      setShowStateMap(true);
+    } else if (sectionHint === 'visual') {
+      setShowVisual(true);
+    }
+  }, [isOpen, sectionHint]);
 
   const nodeOptions = useMemo(() => getNodeSelectOptions(nodes), [nodes]);
 
