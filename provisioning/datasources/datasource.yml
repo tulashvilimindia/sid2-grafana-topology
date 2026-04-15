@@ -1,10 +1,23 @@
 apiVersion: 1
 
 datasources:
+  # Local Prometheus scraping the Grafana container itself — gives the
+  # plugin a real namespace of metrics (grafana_*, go_*, process_*) to
+  # test metric autocomplete against without needing cloud credentials.
+  - name: Local Prometheus
+    type: prometheus
+    uid: local-prom
+    isDefault: true
+    access: proxy
+    url: http://prometheus:9090
+    jsonData:
+      httpMethod: POST
+      timeInterval: 15s
+
   - name: TestData DB
     type: testdata
     uid: testdata
-    isDefault: true
+    isDefault: false
     access: proxy
 
   # Infinity datasource — connects to production Grafana REST API

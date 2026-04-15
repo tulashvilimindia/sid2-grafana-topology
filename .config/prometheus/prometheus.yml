@@ -1,0 +1,16 @@
+# Local Prometheus scrape config for the topology plugin dev container.
+# Scrapes Grafana's self /metrics endpoint so the plugin has a real
+# metric namespace to test against without requiring cloud credentials.
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: 'grafana'
+    static_configs:
+      - targets: ['grafana:3000']
+    metrics_path: /metrics
