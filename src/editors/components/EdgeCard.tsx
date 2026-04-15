@@ -733,6 +733,30 @@ export const EdgeCard: React.FC<Props> = ({ edge, nodes, isOpen, onToggle, onCha
               )}
             </>
           )}
+
+          {/* ═══════════ Generic fallback for any other datasource ═══════════
+              testdata, loki, elasticsearch, graphite, tempo, mssql, mysql, etc.
+              Renders a plain query textarea plus a hint pointing at the Alias
+              field as the alternative binding path (panel-frame matching). */}
+          {edge.metric?.datasourceUid && dsType && !['prometheus', 'cloudwatch', 'yesoreyeram-infinity-datasource'].includes(dsType) && (
+            <>
+              <div className="topo-editor-field">
+                <label>
+                  Query <span style={{ fontSize: 9, color: '#4c566a' }}>{dsType} native syntax</span>
+                </label>
+                <TextArea
+                  value={edge.metric?.query || ''}
+                  onChange={(e) => handleMetricField('query', e.currentTarget.value)}
+                  placeholder={`Enter your ${dsType} query...`}
+                  rows={3}
+                />
+              </div>
+              <div style={{ fontSize: 10, color: '#616e88', padding: '4px 0 8px' }}>
+                Or leave this empty and set <strong>Alias</strong> above — the plugin will read values
+                from a matching Grafana panel query added in the Queries tab below.
+              </div>
+            </>
+          )}
         </CollapsableSection>
 
         {/* Thresholds */}

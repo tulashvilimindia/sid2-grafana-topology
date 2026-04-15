@@ -350,6 +350,31 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
         </>
       )}
 
+      {/* ═══════════ Generic fallback for any other datasource ═══════════
+          testdata, loki, elasticsearch, graphite, tempo, mssql, mysql, etc.
+          Renders a plain query textarea plus a hint pointing at the refId
+          field as the alternative binding path (panel-query matching). */}
+      {metric.datasourceUid && dsType && !['prometheus', 'cloudwatch', 'yesoreyeram-infinity-datasource'].includes(dsType) && (
+        <>
+          <div className="topo-editor-section-title">Query</div>
+          <div className="topo-editor-field">
+            <label>
+              Query <span style={{ fontSize: 9, color: '#4c566a' }}>{dsType} native syntax</span>
+            </label>
+            <TextArea
+              value={metric.query || ''}
+              onChange={(e) => handleField('query', e.currentTarget.value)}
+              placeholder={`Enter your ${dsType} query...`}
+              rows={3}
+            />
+          </div>
+          <div style={{ fontSize: 10, color: '#616e88', padding: '4px 0 8px' }}>
+            Or leave this empty and set <strong>Panel query refId</strong> above — the plugin will
+            read values from a matching Grafana panel query added in the Queries tab below.
+          </div>
+        </>
+      )}
+
       <div className="topo-editor-section-title">Thresholds</div>
       <ThresholdList thresholds={metric.thresholds || []} onChange={(t) => handleField('thresholds', t)} />
     </CollapsableSection>
