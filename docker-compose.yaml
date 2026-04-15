@@ -23,3 +23,14 @@ services:
       GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
       GF_SECURITY_ADMIN_USER: admin
       GF_SECURITY_ADMIN_PASSWORD: admin
+      # AWS credentials passthrough for the provisioned CloudWatch
+      # datasource (provisioning/datasources/datasource.yml). Read from
+      # host shell or a .env file in this directory. Leave unset for
+      # local-only dev without real AWS credentials.
+      AWS_ACCESS_KEY: ${AWS_ACCESS_KEY:-}
+      AWS_SECRET_KEY: ${AWS_SECRET_KEY:-}
+      AWS_REGION: ${AWS_REGION:-us-east-1}
+      # Infinity datasource (Production Grafana API) + Prometheus proxy
+      GRAFANA_URL: ${GRAFANA_URL:-}
+      GRAFANA_API_TOKEN: ${GRAFANA_API_TOKEN:-}
+      NR_API_KEY: ${NR_API_KEY:-}

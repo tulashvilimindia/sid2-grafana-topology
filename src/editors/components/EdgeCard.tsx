@@ -5,6 +5,12 @@ import { TopologyEdge, TopologyNode, FlowSpeed, DatasourceQueryConfig, EdgeMetri
 import { ThresholdList } from './ThresholdList';
 import { getNodeSelectOptions } from '../utils/editorUtils';
 import { EdgeEditSection } from '../../utils/panelEvents';
+import {
+  getCloudWatchDefaultRegion,
+  fetchCwNamespaces,
+  fetchCwMetrics,
+  fetchCwDimensionKeys,
+} from '../../utils/cloudwatchResources';
 import '../editors.css';
 
 const CLOUDWATCH_STATS = [
@@ -215,14 +221,98 @@ export const EdgeCard: React.FC<Props> = ({ edge, nodes, isOpen, onToggle, onCha
 
   // ─── Datasource type discovery (mirrors MetricEditor pattern) ───
   const [dsType, setDsType] = useState<string>('');
+  // CloudWatch autocomplete state — parallel to MetricEditor
+  const [cwRegion, setCwRegion] = useState<string>('');
+  const [cwNamespaces, setCwNamespaces] = useState<Array<{ label: string; value: string }>>([]);
+  const [cwMetricNames, setCwMetricNames] = useState<Array<{ label: string; value: string }>>([]);
+  const [cwDimKeys, setCwDimKeys] = useState<Array<{ label: string; value: string }>>([]);
+  const [cwError, setCwError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!edge.metric?.datasourceUid) { setDsType(''); return; }
+    const uid = edge.metric?.datasourceUid;
+    if (!uid) {
+      setDsType('');
+      setCwRegion('');
+      setCwNamespaces([]);
+      setCwMetricNames([]);
+      setCwDimKeys([]);
+      setCwError(null);
+      return;
+    }
     let cancelled = false;
-    getDataSourceSrv().get(edge.metric.datasourceUid)
-      .then((ds) => { if (!cancelled) { setDsType(ds.type); } })
+    getDataSourceSrv()
+      .get(uid)
+      .then(async (ds) => {
+        if (cancelled) {return;}
+        setDsType(ds.type);
+        if (ds.type === 'cloudwatch') {
+          setCwError(null);
+          const region = getCloudWatchDefaultRegion(uid);
+          setCwRegion(region);
+          try {
+            const namespaces = await fetchCwNamespaces(uid, region);
+            if (cancelled) {return;}
+            setCwNamespaces(namespaces.map((n) => ({ label: n, value: n })));
+          } catch (err) {
+            if (!cancelled) {
+              setCwError(`Namespaces: ${(err as Error).message}`);
+              setCwNamespaces([]);
+            }
+          }
+        } else {
+          setCwNamespaces([]);
+          setCwMetricNames([]);
+          setCwDimKeys([]);
+          setCwError(null);
+        }
+      })
       .catch(() => { if (!cancelled) { setDsType(''); } });
     return () => { cancelled = true; };
   }, [edge.metric?.datasourceUid]);
+
+  // Fetch metric names whenever namespace changes
+  useEffect(() => {
+    const uid = edge.metric?.datasourceUid;
+    const namespace = edge.metric?.queryConfig?.namespace;
+    if (dsType !== 'cloudwatch' || !uid || !cwRegion || !namespace) {
+      setCwMetricNames([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCwMetrics(uid, cwRegion, namespace)
+      .then((names) => {
+        if (cancelled) {return;}
+        setCwMetricNames(names.map((n) => ({ label: n, value: n })));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCwError(`Metrics: ${(err as Error).message}`);
+          setCwMetricNames([]);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [dsType, edge.metric?.datasourceUid, cwRegion, edge.metric?.queryConfig?.namespace]);
+
+  // Fetch dimension keys whenever metric name changes
+  useEffect(() => {
+    const uid = edge.metric?.datasourceUid;
+    const namespace = edge.metric?.queryConfig?.namespace;
+    const metricName = edge.metric?.queryConfig?.metricName;
+    if (dsType !== 'cloudwatch' || !uid || !cwRegion || !namespace || !metricName) {
+      setCwDimKeys([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCwDimensionKeys(uid, cwRegion, namespace, metricName)
+      .then((keys) => {
+        if (cancelled) {return;}
+        setCwDimKeys(keys.map((k) => ({ label: k, value: k })));
+      })
+      .catch(() => {
+        // Dimension keys are optional — fail silently
+      });
+    return () => { cancelled = true; };
+  }, [dsType, edge.metric?.datasourceUid, cwRegion, edge.metric?.queryConfig?.namespace, edge.metric?.queryConfig?.metricName]);
 
   // ─── Patch a single queryConfig field on edge.metric.queryConfig ───
   const updateMetricQueryConfig = useCallback(
@@ -608,21 +698,42 @@ export const EdgeCard: React.FC<Props> = ({ edge, nodes, isOpen, onToggle, onCha
           {/* CloudWatch */}
           {edge.metric?.datasourceUid && dsType === 'cloudwatch' && (
             <>
-              <div className="topo-editor-section-title">CloudWatch query</div>
+              <div className="topo-editor-section-title">
+                CloudWatch query
+                {cwRegion && <span style={{ fontSize: 9, color: '#4c566a', marginLeft: 6 }}>region {cwRegion}</span>}
+              </div>
+              {cwError && (
+                <div style={{ fontSize: 10, color: '#bf616a', padding: '4px 0' }}>
+                  {cwError} — check AWS credentials in the datasource config, or type values manually.
+                </div>
+              )}
               <div className="topo-editor-field">
-                <label>Namespace</label>
-                <Input
-                  value={edge.metric?.queryConfig?.namespace || ''}
-                  onChange={(e) => updateMetricQueryConfig('namespace', e.currentTarget.value || undefined)}
-                  placeholder="AWS/ApplicationELB"
+                <label>
+                  Namespace
+                  <span style={{ fontSize: 9, color: '#4c566a', marginLeft: 4 }}>({cwNamespaces.length} available)</span>
+                </label>
+                <Select
+                  options={cwNamespaces}
+                  value={edge.metric?.queryConfig?.namespace || null}
+                  onChange={(v) => updateMetricQueryConfig('namespace', v.value || undefined)}
+                  allowCustomValue
+                  isClearable
+                  placeholder={cwNamespaces.length > 0 ? 'Select namespace...' : 'AWS/ApplicationELB'}
                 />
               </div>
               <div className="topo-editor-field">
-                <label>Metric name</label>
-                <Input
-                  value={edge.metric?.queryConfig?.metricName || ''}
-                  onChange={(e) => updateMetricQueryConfig('metricName', e.currentTarget.value || undefined)}
-                  placeholder="RequestCount"
+                <label>
+                  Metric name
+                  <span style={{ fontSize: 9, color: '#4c566a', marginLeft: 4 }}>({cwMetricNames.length} available)</span>
+                </label>
+                <Select
+                  options={cwMetricNames}
+                  value={edge.metric?.queryConfig?.metricName || null}
+                  onChange={(v) => updateMetricQueryConfig('metricName', v.value || undefined)}
+                  allowCustomValue
+                  isClearable
+                  placeholder={cwMetricNames.length > 0 ? 'Select metric...' : 'RequestCount'}
+                  isDisabled={!edge.metric?.queryConfig?.namespace}
                 />
               </div>
               <div className="topo-editor-field">
@@ -637,12 +748,15 @@ export const EdgeCard: React.FC<Props> = ({ edge, nodes, isOpen, onToggle, onCha
                 )}
                 {dimEntries.map((entry, idx) => (
                   <div key={idx} className="topo-editor-row" style={{ gap: 4, marginBottom: 2 }}>
-                    <Input
-                      value={entry.key}
-                      onChange={(e) => updateDim(idx, 'key', e.currentTarget.value)}
-                      placeholder="LoadBalancer"
-                      width={14}
-                    />
+                    <div style={{ width: 130 }}>
+                      <Select
+                        options={cwDimKeys}
+                        value={entry.key ? { label: entry.key, value: entry.key } : null}
+                        onChange={(v) => updateDim(idx, 'key', v.value || '')}
+                        allowCustomValue
+                        placeholder="key"
+                      />
+                    </div>
                     <span style={{ color: '#616e88', fontSize: 11 }}>=</span>
                     <Input
                       value={entry.value}

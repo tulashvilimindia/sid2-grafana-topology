@@ -3,6 +3,12 @@ import { CollapsableSection, Input, Checkbox, IconButton, Select, Button, TextAr
 import { DataSourcePicker, getDataSourceSrv } from '@grafana/runtime';
 import { NodeMetricConfig, DatasourceQueryConfig } from '../../types';
 import { ThresholdList } from './ThresholdList';
+import {
+  getCloudWatchDefaultRegion,
+  fetchCwNamespaces,
+  fetchCwMetrics,
+  fetchCwDimensionKeys,
+} from '../../utils/cloudwatchResources';
 import '../editors.css';
 
 const CLOUDWATCH_STATS = [
@@ -34,6 +40,15 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
   const [availableMetrics, setAvailableMetrics] = useState<Array<{ label: string; value: string }>>([]);
   const [loadingMetrics, setLoadingMetrics] = useState(false);
   const [dsType, setDsType] = useState<string>('');
+  // CloudWatch autocomplete state — populated from Grafana's CW resource API
+  // on datasource / namespace / metric changes. Dropdowns fall back to plain
+  // text inputs via allowCustomValue so manual entry still works when the
+  // datasource can't reach AWS.
+  const [cwRegion, setCwRegion] = useState<string>('');
+  const [cwNamespaces, setCwNamespaces] = useState<Array<{ label: string; value: string }>>([]);
+  const [cwMetricNames, setCwMetricNames] = useState<Array<{ label: string; value: string }>>([]);
+  const [cwDimKeys, setCwDimKeys] = useState<Array<{ label: string; value: string }>>([]);
+  const [cwError, setCwError] = useState<string | null>(null);
 
   const handleField = useCallback(
     <K extends keyof NodeMetricConfig>(field: K, value: NodeMetricConfig[K]) => {
@@ -85,11 +100,17 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
     syncDimensions(dimEntries.filter((_, i) => i !== idx));
   }, [dimEntries, syncDimensions]);
 
-  // When datasource changes, capture its type and discover Prometheus metric names if applicable
+  // When datasource changes, capture its type and discover Prometheus metric
+  // names or seed the CloudWatch region + namespace list depending on type.
   useEffect(() => {
     if (!metric.datasourceUid) {
       setAvailableMetrics([]);
       setDsType('');
+      setCwRegion('');
+      setCwNamespaces([]);
+      setCwMetricNames([]);
+      setCwDimKeys([]);
+      setCwError(null);
       return;
     }
 
@@ -111,9 +132,28 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
           const data = await response.json();
           const names: string[] = data?.data || [];
           setAvailableMetrics(names.map((n) => ({ label: n, value: n })));
-        } else {
-          // Reset stale Prometheus metric names when switching to a non-Prometheus DS
+        } else if (ds.type === 'cloudwatch') {
           setAvailableMetrics([]);
+          setCwError(null);
+          const region = getCloudWatchDefaultRegion(metric.datasourceUid);
+          setCwRegion(region);
+          try {
+            const namespaces = await fetchCwNamespaces(metric.datasourceUid, region);
+            if (cancelled) {return;}
+            setCwNamespaces(namespaces.map((n) => ({ label: n, value: n })));
+          } catch (err) {
+            if (!cancelled) {
+              setCwError(`Namespaces: ${(err as Error).message}`);
+              setCwNamespaces([]);
+            }
+          }
+        } else {
+          // Reset stale state when switching to a non-specialized DS type
+          setAvailableMetrics([]);
+          setCwNamespaces([]);
+          setCwMetricNames([]);
+          setCwDimKeys([]);
+          setCwError(null);
         }
       } catch {
         // Silently fail — user can still type manually
@@ -127,6 +167,50 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
     fetchMetrics();
     return () => { cancelled = true; };
   }, [metric.datasourceUid]);
+
+  // When the CloudWatch namespace changes, fetch the list of metric names
+  // available in that namespace.
+  useEffect(() => {
+    const namespace = metric.queryConfig?.namespace;
+    if (dsType !== 'cloudwatch' || !metric.datasourceUid || !cwRegion || !namespace) {
+      setCwMetricNames([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCwMetrics(metric.datasourceUid, cwRegion, namespace)
+      .then((names) => {
+        if (cancelled) {return;}
+        setCwMetricNames(names.map((n) => ({ label: n, value: n })));
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setCwError(`Metrics: ${(err as Error).message}`);
+          setCwMetricNames([]);
+        }
+      });
+    return () => { cancelled = true; };
+  }, [dsType, metric.datasourceUid, cwRegion, metric.queryConfig?.namespace]);
+
+  // When the CloudWatch metric name changes, fetch the list of dimension keys
+  // valid for that metric. Used to populate the dimension-key dropdown.
+  useEffect(() => {
+    const namespace = metric.queryConfig?.namespace;
+    const metricName = metric.queryConfig?.metricName;
+    if (dsType !== 'cloudwatch' || !metric.datasourceUid || !cwRegion || !namespace || !metricName) {
+      setCwDimKeys([]);
+      return;
+    }
+    let cancelled = false;
+    fetchCwDimensionKeys(metric.datasourceUid, cwRegion, namespace, metricName)
+      .then((keys) => {
+        if (cancelled) {return;}
+        setCwDimKeys(keys.map((k) => ({ label: k, value: k })));
+      })
+      .catch(() => {
+        // Dimension keys are optional — fail silently
+      });
+    return () => { cancelled = true; };
+  }, [dsType, metric.datasourceUid, cwRegion, metric.queryConfig?.namespace, metric.queryConfig?.metricName]);
 
   // Existing sections used by sibling metrics (for Section dropdown)
   const sectionOptions = useMemo(() => {
@@ -215,21 +299,42 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
       {/* ═══════════ CloudWatch query editor ═══════════ */}
       {metric.datasourceUid && dsType === 'cloudwatch' && (
         <>
-          <div className="topo-editor-section-title">CloudWatch query</div>
+          <div className="topo-editor-section-title">
+            CloudWatch query
+            {cwRegion && <span style={{ fontSize: 9, color: '#4c566a', marginLeft: 6 }}>region {cwRegion}</span>}
+          </div>
+          {cwError && (
+            <div style={{ fontSize: 10, color: '#bf616a', padding: '4px 0' }}>
+              {cwError} — check AWS credentials in the datasource config, or type values manually.
+            </div>
+          )}
           <div className="topo-editor-field">
-            <label>Namespace</label>
-            <Input
-              value={metric.queryConfig?.namespace || ''}
-              onChange={(e) => updateQueryConfig('namespace', e.currentTarget.value || undefined)}
-              placeholder="AWS/ApplicationELB"
+            <label>
+              Namespace
+              <span style={{ fontSize: 9, color: '#4c566a', marginLeft: 4 }}>({cwNamespaces.length} available)</span>
+            </label>
+            <Select
+              options={cwNamespaces}
+              value={metric.queryConfig?.namespace || null}
+              onChange={(v) => updateQueryConfig('namespace', v.value || undefined)}
+              allowCustomValue
+              isClearable
+              placeholder={cwNamespaces.length > 0 ? 'Select namespace...' : 'AWS/ApplicationELB'}
             />
           </div>
           <div className="topo-editor-field">
-            <label>Metric name</label>
-            <Input
-              value={metric.queryConfig?.metricName || ''}
-              onChange={(e) => updateQueryConfig('metricName', e.currentTarget.value || undefined)}
-              placeholder="RequestCount"
+            <label>
+              Metric name
+              <span style={{ fontSize: 9, color: '#4c566a', marginLeft: 4 }}>({cwMetricNames.length} available)</span>
+            </label>
+            <Select
+              options={cwMetricNames}
+              value={metric.queryConfig?.metricName || null}
+              onChange={(v) => updateQueryConfig('metricName', v.value || undefined)}
+              allowCustomValue
+              isClearable
+              placeholder={cwMetricNames.length > 0 ? 'Select metric...' : 'RequestCount'}
+              isDisabled={!metric.queryConfig?.namespace}
             />
           </div>
           <div className="topo-editor-field">
@@ -244,12 +349,15 @@ export const MetricEditor: React.FC<Props> = ({ metric, isOpen, onToggle, onChan
             )}
             {dimEntries.map((entry, idx) => (
               <div key={idx} className="topo-editor-row" style={{ gap: 4, marginBottom: 2 }}>
-                <Input
-                  value={entry.key}
-                  onChange={(e) => updateDim(idx, 'key', e.currentTarget.value)}
-                  placeholder="LoadBalancer"
-                  width={14}
-                />
+                <div style={{ width: 130 }}>
+                  <Select
+                    options={cwDimKeys}
+                    value={entry.key ? { label: entry.key, value: entry.key } : null}
+                    onChange={(v) => updateDim(idx, 'key', v.value || '')}
+                    allowCustomValue
+                    placeholder="key"
+                  />
+                </div>
                 <span style={{ color: '#616e88', fontSize: 11 }}>=</span>
                 <Input
                   value={entry.value}
