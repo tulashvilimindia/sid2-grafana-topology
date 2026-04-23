@@ -106,6 +106,26 @@ describe('assignTiers', () => {
     const tiers = assignTiers(nodes, edges);
     expect(tiers.get('c')).toBe(2);
   });
+
+  test('diamond fan-in (A→B, A→C, B→D, C→D) assigns D to tier 2 exactly once', () => {
+    // Regression for the `queued: Set<string>` guard at layout.ts:62-86.
+    // Without the guard, D's incomingCount ticks past 0 via the second parent,
+    // re-enqueuing D and reprocessing its descendants — O(N²) worst case.
+    // With the guard, D is enqueued exactly once and the tier map has 4 entries.
+    const nodes = [makeNode('a'), makeNode('b'), makeNode('c'), makeNode('d')];
+    const edges = [
+      makeEdge('e1', 'a', 'b'),
+      makeEdge('e2', 'a', 'c'),
+      makeEdge('e3', 'b', 'd'),
+      makeEdge('e4', 'c', 'd'),
+    ];
+    const tiers = assignTiers(nodes, edges);
+    expect(tiers.get('a')).toBe(0);
+    expect(tiers.get('b')).toBe(1);
+    expect(tiers.get('c')).toBe(1);
+    expect(tiers.get('d')).toBe(2);
+    expect(tiers.size).toBe(4);
+  });
 });
 
 describe('autoLayout', () => {
