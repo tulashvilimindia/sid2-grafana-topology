@@ -233,6 +233,37 @@ describe('queryDatasource — CloudWatch path', () => {
     });
     expect(result).toMatchObject({ value: null });
   });
+
+  // ─── Region regression (was hardcoded 'default' for months) ─────────────
+  //
+  // `DatasourceQueryConfig.region` is declared in types.ts and written by the
+  // editor's region picker, but the query layer used to hardcode
+  // `region: 'default'` and silently drop it. The tests below lock in that
+  // the user's region selection actually reaches the API payload.
+  test('forwards queryConfig.region into CloudWatch request body', async () => {
+    mockFetchOk({
+      results: { A: { frames: [{ data: { values: [[1], [3]] } }] } },
+    });
+    await queryDatasource('uid-1', '', undefined, {
+      namespace: 'AWS/EC2',
+      metricName: 'CPUUtilization',
+      region: 'eu-west-2',
+    });
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.queries[0].region).toBe('eu-west-2');
+  });
+
+  test('falls back to "default" when queryConfig.region is absent', async () => {
+    mockFetchOk({
+      results: { A: { frames: [{ data: { values: [[1], [3]] } }] } },
+    });
+    await queryDatasource('uid-1', '', undefined, {
+      namespace: 'AWS/EC2',
+      metricName: 'CPUUtilization',
+    });
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.queries[0].region).toBe('default');
+  });
 });
 
 describe('queryDatasource — Infinity path', () => {
@@ -400,6 +431,20 @@ describe('queryDatasourceRange', () => {
     expect(points).toEqual([]);
   });
 
+  test('CloudWatch range forwards queryConfig.region into request body', async () => {
+    mockDsType('cloudwatch');
+    mockFetchOk({
+      results: { A: { frames: [{ data: { values: [[1000], [42]] } }] } },
+    });
+    await queryDatasourceRange('uid-1', '', {
+      namespace: 'AWS/EC2',
+      metricName: 'CPUUtilization',
+      region: 'ap-southeast-2',
+    });
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body);
+    expect(body.queries[0].region).toBe('ap-southeast-2');
+  });
+
   test('CloudWatch range empty frames returns empty', async () => {
     mockDsType('cloudwatch');
     mockFetchOk({ results: { A: { frames: [] } } });
@@ -425,6 +470,82 @@ describe('queryDatasourceRange', () => {
 // CloudWatch and Infinity silently passed raw $var tokens through to the
 // datasource, which then returned empty data.
 // ─────────────────────────────────────────────────────────────────────
+
+// ─── Internal 10s hard-ceiling timeout ───────────────────────────────
+//
+// When the caller doesn't provide an AbortSignal, queryDatasource spins up
+// its own AbortController + 10s setTimeout so a hung datasource can't stall
+// the Promise.all in useSelfQueries for ~2min (the default TCP timeout).
+// Locked in via fake timers + a never-resolving fetch mock.
+describe('queryDatasource — internal timeout', () => {
+  beforeEach(() => {
+    jest.useFakeTimers();
+    mockDsType('prometheus');
+    jest.spyOn(console, 'warn').mockImplementation(() => {});
+  });
+  afterEach(() => {
+    jest.useRealTimers();
+    jest.restoreAllMocks();
+  });
+
+  test('aborts the signal after 10_000ms when the datasource hangs', async () => {
+    let capturedSignal: AbortSignal | undefined;
+    (global.fetch as jest.Mock) = jest.fn().mockImplementation((_url, init) => {
+      capturedSignal = init?.signal;
+      // Return a promise that resolves only when the signal aborts — mimics
+      // real fetch behaviour when the caller cancels.
+      return new Promise((_resolve, reject) => {
+        capturedSignal?.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+    const promise = queryDatasource('uid-1', 'up');
+    // Signal is created and passed into fetch.
+    await Promise.resolve();
+    expect(capturedSignal).toBeDefined();
+    expect(capturedSignal!.aborted).toBe(false);
+    // 9999ms — still not aborted.
+    await Promise.resolve();
+    jest.advanceTimersByTime(9_999);
+    expect(capturedSignal!.aborted).toBe(false);
+    // One more millisecond — internal controller fires abort.
+    jest.advanceTimersByTime(1);
+    expect(capturedSignal!.aborted).toBe(true);
+    // The resulting promise resolves (AbortError is swallowed to {value: null}).
+    await expect(promise).resolves.toEqual(expect.objectContaining({ value: null }));
+  });
+
+  test('external signal bypasses the internal 10s timeout', async () => {
+    const externalController = new AbortController();
+    let capturedSignal: AbortSignal | undefined;
+    (global.fetch as jest.Mock) = jest.fn().mockImplementation((_url, init) => {
+      capturedSignal = init?.signal;
+      return new Promise((_resolve, reject) => {
+        // Mirror real fetch: reject with AbortError when the signal aborts.
+        capturedSignal?.addEventListener('abort', () => {
+          const err = new Error('aborted');
+          err.name = 'AbortError';
+          reject(err);
+        });
+      });
+    });
+    const promise = queryDatasource(
+      'uid-1', 'up', undefined, undefined, undefined, undefined, externalController.signal
+    );
+    await Promise.resolve();
+    // Advance past the would-have-fired internal timeout — the external
+    // signal must remain in control, so no abort yet.
+    jest.advanceTimersByTime(10_001);
+    expect(capturedSignal!.aborted).toBe(false);
+    // External abort propagates — confirms external signal is the one wired in.
+    externalController.abort();
+    expect(capturedSignal!.aborted).toBe(true);
+    await expect(promise).resolves.toEqual(expect.objectContaining({ value: null }));
+  });
+});
 
 describe('queryDatasource — template variable interpolation', () => {
   let warnSpy: jest.SpyInstance;
