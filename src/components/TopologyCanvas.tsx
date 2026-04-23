@@ -6,7 +6,7 @@ import {
 } from '../types';
 import { getAnchorPoint, getBezierPath, getBezierMidpoint, EDGE_TYPE_STYLES } from '../utils/edges';
 import { ViewportState, DEFAULT_VIEWPORT, zoomAtPoint, fitToView } from '../utils/viewport';
-import { getStoredViewport, setStoredViewport, clearStoredViewport } from '../utils/viewportStore';
+import { getStoredViewport, setStoredViewport } from '../utils/viewportStore';
 
 interface CanvasProps {
   nodes: TopologyNode[];
@@ -226,18 +226,11 @@ export const TopologyCanvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     setStoredViewport(panelId, viewport);
   }, [panelId, viewport]);
-  // Best-effort cleanup: clear this panel's stored viewport when its id
-  // changes. React cannot distinguish "panel deleted from dashboard" from
-  // "panel remounted for edit/view toggle" — both trigger unmount. This
-  // effect only clears on panelId change, which is a no-op in the common
-  // case (id is stable within a panel lifetime) but catches the edge case
-  // where a panel id mutates. Remaining leak is bounded: one entry per
-  // unique panelId the user has ever opened in this browser session.
-  useEffect(() => {
-    return () => {
-      clearStoredViewport(panelId);
-    };
-  }, [panelId]);
+  // No cleanup: React effect cleanups fire on every unmount — including the
+  // edit/view toggle remount we specifically want to survive. A cleanup here
+  // would clear the store and defeat the whole purpose of viewportStore.
+  // We accept the bounded leak of one entry per unique panelId the user has
+  // ever opened in this browser session.
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ x: number; y: number; tx: number; ty: number } | null>(null);
 
@@ -269,10 +262,16 @@ export const TopologyCanvas: React.FC<CanvasProps> = ({
   useEffect(() => {
     if (!isPanning) {return;}
     const handleMove = (e: PointerEvent) => {
-      if (!panStartRef.current) {return;}
-      const dx = e.clientX - panStartRef.current.x;
-      const dy = e.clientY - panStartRef.current.y;
-      setViewport((prev) => ({ ...prev, translateX: panStartRef.current!.tx + dx, translateY: panStartRef.current!.ty + dy }));
+      // Snapshot ref fields BEFORE scheduling setViewport. React 18 batches
+      // the updater lambda so it can run after handleUp has already nulled
+      // panStartRef.current (observable under act() batching; latent under
+      // concurrent rendering). Closing over primitives avoids the deref.
+      const start = panStartRef.current;
+      if (!start) {return;}
+      const { x, y, tx, ty } = start;
+      const dx = e.clientX - x;
+      const dy = e.clientY - y;
+      setViewport((prev) => ({ ...prev, translateX: tx + dx, translateY: ty + dy }));
     };
     const handleUp = () => { setIsPanning(false); panStartRef.current = null; };
     document.addEventListener('pointermove', handleMove);

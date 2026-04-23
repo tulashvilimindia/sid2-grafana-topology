@@ -9,7 +9,7 @@
 
 import React from 'react';
 import { act, fireEvent } from '@testing-library/react';
-import { renderCanvas } from './TopologyCanvas.harness';
+import { renderCanvas, buildNode, buildEdge } from './TopologyCanvas.harness';
 import { clearStoredViewport } from '../../utils/viewportStore';
 
 // ─── Helpers ──────────────────────────────────────────────────────────
@@ -216,5 +216,212 @@ describe('TopologyCanvas interactions', () => {
 
     const nextTransform = transformWrapper!.style.transform;
     expect(nextTransform).not.toBe(initialTransform);
+  });
+
+  // ─── Edge hover dim ─────────────────────────────────────────────────
+  //
+  // When any edge is hovered, every other edge's base path fades to
+  // opacity 0.2 (state: hoveredEdgeId). The visual layer uses the inner
+  // `<path>` of each `<g>`; opacity is passed as a numeric prop which
+  // renders to the `opacity` SVG attribute. mouseleave clears it.
+  describe('edge hover dim', () => {
+    test('mouseenter on one edge dims siblings', () => {
+      const { container, getByTestId } = renderCanvas();
+      const hit = getByTestId('edge-hit-e-ab');
+      fireEvent.mouseEnter(hit);
+      // Visual layer is the first SVG; each edge is a <g> with a base <path>.
+      const visualPaths = container
+        .querySelectorAll<SVGSVGElement>('svg')[0]
+        .querySelectorAll<SVGPathElement>('g > path');
+      // First <g> is edge e-ab (hovered), second is e-bc (sibling).
+      expect(visualPaths[0].getAttribute('opacity')).toBe('1');
+      expect(visualPaths[1].getAttribute('opacity')).toBe('0.2');
+    });
+
+    test('mouseleave clears dim state', () => {
+      const { container, getByTestId } = renderCanvas();
+      const hit = getByTestId('edge-hit-e-ab');
+      fireEvent.mouseEnter(hit);
+      fireEvent.mouseLeave(hit);
+      const visualPaths = container
+        .querySelectorAll<SVGSVGElement>('svg')[0]
+        .querySelectorAll<SVGPathElement>('g > path');
+      expect(visualPaths[0].getAttribute('opacity')).toBe('1');
+      expect(visualPaths[1].getAttribute('opacity')).toBe('1');
+    });
+  });
+
+  // ─── Parallel edge perpendicular offset ─────────────────────────────
+  //
+  // Two edges between the same node pair should spread via the
+  // perpendicular-normal math at TopologyCanvas.tsx:485-493 so they
+  // don't overlap. Asserted by checking the two paths have different
+  // `d` attributes.
+  describe('parallel edges', () => {
+    test('two edges n-a→n-b render with different bezier d attributes', () => {
+      const nodes = [
+        buildNode({ id: 'n-a', name: 'A', position: { x: 50, y: 50 } }),
+        buildNode({ id: 'n-b', name: 'B', position: { x: 300, y: 50 } }),
+      ];
+      const edges = [
+        buildEdge({ id: 'e-1', sourceId: 'n-a', targetId: 'n-b' }),
+        buildEdge({ id: 'e-2', sourceId: 'n-a', targetId: 'n-b' }),
+      ];
+      const nodePositions = new Map<string, { x: number; y: number }>(
+        nodes.map((n) => [n.id, n.position])
+      );
+      const nodeStates = new Map(
+        nodes.map((n) => [n.id, { nodeId: n.id, status: 'ok' as const, metricValues: {}, expanded: false }])
+      );
+      const edgeStates = new Map(
+        edges.map((e) => [
+          e.id,
+          {
+            edgeId: e.id,
+            status: 'healthy' as const,
+            value: 0,
+            formattedLabel: undefined,
+            thickness: 2,
+            color: '#a3be8c',
+            animationSpeed: 0,
+          },
+        ])
+      );
+      const { container } = renderCanvas({ nodes, edges, nodePositions, nodeStates, edgeStates });
+      const visualPaths = container
+        .querySelectorAll<SVGSVGElement>('svg')[0]
+        .querySelectorAll<SVGPathElement>('g > path');
+      expect(visualPaths.length).toBeGreaterThanOrEqual(2);
+      expect(visualPaths[0].getAttribute('d')).not.toBe(visualPaths[1].getAttribute('d'));
+    });
+  });
+
+  // ─── Auto fit-to-view on first render ───────────────────────────────
+  //
+  // The effect at TopologyCanvas.tsx:297-307 schedules a fit-to-view
+  // 100ms after nodes first appear (prevNodeCountRef went 0→N with no
+  // stored viewport). Uses fake timers to avoid a real 100ms wait.
+  describe('auto fit-to-view', () => {
+    test('schedules fit-to-view 100ms after nodes mount', () => {
+      jest.useFakeTimers();
+      try {
+        const { container } = renderCanvas();
+        const wrapper = container
+          .querySelector('.topology-canvas')!
+          .querySelector<HTMLElement>(':scope > div')!;
+        // Before timeout: viewport is still default (identity transform).
+        expect(wrapper.style.transform).toBe('translate(0px, 0px) scale(1)');
+        act(() => {
+          jest.advanceTimersByTime(100);
+        });
+        // After timeout: fitToView has run and mutated the transform.
+        expect(wrapper.style.transform).not.toBe('translate(0px, 0px) scale(1)');
+      } finally {
+        jest.useRealTimers();
+      }
+    });
+  });
+
+  // ─── Pan gestures ───────────────────────────────────────────────────
+  //
+  // Two entry points at TopologyCanvas.tsx:260-267: middle-mouse-button
+  // (button=1) and Ctrl+left-click (button=0, ctrlKey=true). Both
+  // start a pan gesture that updates viewport.translate on pointermove.
+  describe('pan gestures', () => {
+    // pointermove + pointerup fire in the same act(). Prior to the fix at
+    // TopologyCanvas.tsx:264-270 (snapshot panStartRef.current *before*
+    // setViewport), this sequence crashed because React 18 batching flushed
+    // the setViewport updater after handleUp had already nulled the ref.
+    // The post-fix updater closes over primitives so it's safe.
+    test('middle-button drag updates translate and survives pointerup in-batch', () => {
+      const { container } = renderCanvas();
+      const canvasDiv = container.querySelector('.topology-canvas') as HTMLElement;
+      const wrapper = canvasDiv.querySelector<HTMLElement>(':scope > div')!;
+      const before = wrapper.style.transform;
+      // Use the MouseEvent helper because jsdom's fireEvent.pointerDown
+      // does not reliably thread `button` through React's synthetic events.
+      fireEvent(canvasDiv, mouseEvent('pointerdown', { clientX: 100, clientY: 100, button: 1 }));
+      act(() => {
+        firePointer(document, 'pointermove', { clientX: 150, clientY: 125 });
+        firePointer(document, 'pointerup', { clientX: 150, clientY: 125 });
+      });
+      expect(wrapper.style.transform).not.toBe(before);
+    });
+
+    test('Ctrl+left-drag updates translate and survives pointerup in-batch', () => {
+      const { container } = renderCanvas();
+      const canvasDiv = container.querySelector('.topology-canvas') as HTMLElement;
+      const wrapper = canvasDiv.querySelector<HTMLElement>(':scope > div')!;
+      const before = wrapper.style.transform;
+      fireEvent(
+        canvasDiv,
+        mouseEvent('pointerdown', { clientX: 100, clientY: 100, button: 0, ctrlKey: true })
+      );
+      act(() => {
+        firePointer(document, 'pointermove', { clientX: 140, clientY: 120 });
+        firePointer(document, 'pointerup', { clientX: 140, clientY: 120 });
+      });
+      expect(wrapper.style.transform).not.toBe(before);
+    });
+  });
+
+  // ─── Zoom controls overlay ──────────────────────────────────────────
+  describe('zoom controls', () => {
+    test('Fit button updates viewport to fit nodes', () => {
+      const { container, getByTitle } = renderCanvas();
+      const wrapper = container
+        .querySelector('.topology-canvas')!
+        .querySelector<HTMLElement>(':scope > div')!;
+      fireEvent.click(getByTitle('Fit to view'));
+      // Fit recalculates from the 3 harness nodes — non-identity transform.
+      expect(wrapper.style.transform).not.toBe('translate(0px, 0px) scale(1)');
+    });
+
+    test('1:1 button resets viewport to identity', () => {
+      const { container, getByTitle } = renderCanvas();
+      const canvasDiv = container.querySelector('.topology-canvas') as HTMLElement;
+      const wrapper = canvasDiv.querySelector<HTMLElement>(':scope > div')!;
+      // First zoom in via wheel so there's something to reset.
+      act(() => {
+        const wheelEv = new Event('wheel', { bubbles: true, cancelable: true });
+        Object.assign(wheelEv, { deltaY: -300, clientX: 400, clientY: 300 });
+        canvasDiv.dispatchEvent(wheelEv);
+      });
+      expect(wrapper.style.transform).not.toBe('translate(0px, 0px) scale(1)');
+      fireEvent.click(getByTitle('Reset zoom'));
+      expect(wrapper.style.transform).toBe('translate(0px, 0px) scale(1)');
+    });
+  });
+
+  // ─── Viewport persistence across remount ────────────────────────────
+  //
+  // Regression for the deleted cleanup effect at TopologyCanvas.tsx:236-240.
+  // That effect called clearStoredViewport(panelId) on every unmount, which
+  // defeated the whole purpose of viewportStore for the edit↔view remount
+  // case. With the effect gone, zoom survives.
+  test('viewport state survives unmount + remount for same panelId', () => {
+    const panelId = 42;
+    clearStoredViewport(panelId);
+    const first = renderCanvas({ panelId });
+    const firstCanvas = first.container.querySelector('.topology-canvas')!;
+    const firstWrapper = firstCanvas.querySelector<HTMLElement>(':scope > div')!;
+
+    act(() => {
+      const wheelEv = new Event('wheel', { bubbles: true, cancelable: true });
+      Object.assign(wheelEv, { deltaY: -200, clientX: 400, clientY: 300 });
+      firstCanvas.dispatchEvent(wheelEv);
+    });
+    const zoomedTransform = firstWrapper.style.transform;
+    expect(zoomedTransform).not.toBe('translate(0px, 0px) scale(1)');
+
+    first.unmount();
+
+    const second = renderCanvas({ panelId });
+    const secondWrapper = second.container
+      .querySelector('.topology-canvas')!
+      .querySelector<HTMLElement>(':scope > div')!;
+    expect(secondWrapper.style.transform).toBe(zoomedTransform);
+    second.unmount();
+    clearStoredViewport(panelId);
   });
 });

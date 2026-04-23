@@ -38,4 +38,22 @@ describe('viewportStore', () => {
     clearStoredViewport(1);
     expect(getStoredViewport(1)).toBeUndefined();
   });
+
+  test('entries are not auto-evicted by unrelated set/clear activity', () => {
+    // Regression guard. Before the TopologyCanvas.tsx cleanup-effect removal,
+    // the effect at lines 236-240 fired on every unmount (including
+    // edit/view toggle remount) and wiped this store — defeating its
+    // cross-remount persistence. Now the store is a pure stable Map and
+    // entries only disappear via explicit clear calls.
+    setStoredViewport(7, { scale: 3, translateX: 50, translateY: 100 });
+    for (let i = 100; i < 150; i++) {
+      setStoredViewport(i, { scale: 1, translateX: 0, translateY: 0 });
+    }
+    expect(getStoredViewport(7)).toEqual({ scale: 3, translateX: 50, translateY: 100 });
+    for (let i = 100; i < 150; i++) {
+      clearStoredViewport(i);
+    }
+    expect(getStoredViewport(7)).toEqual({ scale: 3, translateX: 50, translateY: 100 });
+    clearStoredViewport(7);
+  });
 });
