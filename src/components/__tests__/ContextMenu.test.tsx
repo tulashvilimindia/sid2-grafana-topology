@@ -349,6 +349,69 @@ describe('ContextMenu submenu + click-ops', () => {
     expect(screen.getByText('Duplicate')).toBeInTheDocument();
     expect(screen.getByText('Delete')).toBeInTheDocument();
   });
+
+  test('ArrowLeft inside a submenu closes the submenu without closing the root', async () => {
+    const { props } = renderMenu({
+      nodes: [buildNode({ type: 'server' })],
+      onChangeNodeType: jest.fn(),
+    });
+    await Promise.resolve();
+    // Open Change type submenu.
+    fireEvent.click(screen.getByText('Change type'));
+    expect(await screen.findByTestId('topology-context-submenu')).toBeInTheDocument();
+    // ArrowLeft from within the submenu — the submenu's own handleKey
+    // fires onEscape which, for the submenu path, collapses just that
+    // submenu (not the whole menu). Root menu remains.
+    fireEvent.keyDown(document, { key: 'ArrowLeft' });
+    expect(screen.queryByTestId('topology-context-submenu')).toBeNull();
+    expect(screen.getByTestId('topology-context-menu')).toBeInTheDocument();
+    // Root onClose must not have fired.
+    expect(props.onClose).not.toHaveBeenCalled();
+  });
+
+  test('Copy node id writes the id to the clipboard', async () => {
+    const writeText = jest.fn().mockResolvedValue(undefined);
+    // jsdom has navigator but not navigator.clipboard — define it.
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      renderMenu();
+      await Promise.resolve();
+      fireEvent.click(screen.getByText('Copy node id'));
+      expect(writeText).toHaveBeenCalledWith('n1');
+    } finally {
+      // Leave clipboard undefined for other tests that might depend on
+      // its original (missing) state.
+      Object.defineProperty(navigator, 'clipboard', {
+        value: undefined,
+        configurable: true,
+      });
+    }
+  });
+
+  test('Copy node id swallows clipboard rejection (silent no-op)', async () => {
+    const err = new Error('NotAllowed');
+    const writeText = jest.fn().mockRejectedValue(err);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+    try {
+      renderMenu();
+      await Promise.resolve();
+      // Must not throw even though clipboard rejects.
+      expect(() => fireEvent.click(screen.getByText('Copy node id'))).not.toThrow();
+      // Flush the rejected promise — the .catch(() => {}) absorbs it.
+      await Promise.resolve();
+    } finally {
+      Object.defineProperty(navigator, 'clipboard', {
+        value: undefined,
+        configurable: true,
+      });
+    }
+  });
 });
 
 /** jsdom normalizes inline hex colors to rgb() when read from .style. */

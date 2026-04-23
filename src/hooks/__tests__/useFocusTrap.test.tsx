@@ -74,4 +74,61 @@ describe('useFocusTrap', () => {
     expect(document.activeElement).toBe(trigger);
     document.body.removeChild(trigger);
   });
+
+  test('active=false is a no-op: does not grab focus, does not trap Tab', () => {
+    const trigger = document.createElement('button');
+    trigger.textContent = 'outside';
+    document.body.appendChild(trigger);
+    trigger.focus();
+    const onEscape = jest.fn();
+    render(<ThreeButtons active={false} onEscape={onEscape} />);
+    // Focus unchanged.
+    expect(document.activeElement).toBe(trigger);
+    // Escape must not fire the handler when inactive.
+    fireEvent.keyDown(document, { key: 'Escape' });
+    expect(onEscape).not.toHaveBeenCalled();
+    document.body.removeChild(trigger);
+  });
+
+  test('container with zero focusables renders without crashing', () => {
+    const EmptyTrap: React.FC = () => {
+      const ref = useRef<HTMLDivElement>(null);
+      useFocusTrap(ref, jest.fn(), true);
+      return <div ref={ref}><span>no focusables here</span></div>;
+    };
+    // No crash when handleKey runs on Tab with zero items.
+    expect(() => {
+      render(<EmptyTrap />);
+      fireEvent.keyDown(document, { key: 'Tab' });
+    }).not.toThrow();
+  });
+
+  test('Tab re-queries focusables — a dynamically-added button becomes the wrap anchor', () => {
+    // The hook re-queries focusables on every Tab so focus cycles include
+    // any nodes added after mount (e.g., alert rows appearing inside a
+    // popup after an async fetch). Without the re-query, Tab from the
+    // newly-last element would not wrap to the first.
+    const DynamicTrap: React.FC = () => {
+      const ref = useRef<HTMLDivElement>(null);
+      const [extra, setExtra] = React.useState(false);
+      useFocusTrap(ref, jest.fn(), true);
+      return (
+        <div ref={ref}>
+          <button type="button">first</button>
+          <button type="button" onClick={() => setExtra(true)}>add</button>
+          {extra && <button type="button">dynamic</button>}
+        </div>
+      );
+    };
+    render(<DynamicTrap />);
+    // Click 'add' — the new 'dynamic' button is now the last focusable.
+    const addBtn = document.querySelectorAll('button')[1] as HTMLButtonElement;
+    fireEvent.click(addBtn);
+    const dynamicBtn = document.querySelectorAll('button')[2] as HTMLButtonElement;
+    dynamicBtn.focus();
+    fireEvent.keyDown(document, { key: 'Tab' });
+    // Without re-query, the hook would think 'add' is still the last and
+    // skip wrapping. With re-query, Tab from 'dynamic' wraps to 'first'.
+    expect(document.activeElement?.textContent).toBe('first');
+  });
 });

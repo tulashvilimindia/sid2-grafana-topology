@@ -191,6 +191,44 @@ describe('fetchAlertRules', () => {
     expect(result.alerts).toEqual([]);
     expect(result.error).toBeUndefined();
   });
+
+  test('rule without alerts[] is skipped cleanly (does not throw)', async () => {
+    // Grafana occasionally returns rules whose `alerts` is undefined (e.g.
+    // a rule that has never fired). The iteration must skip these instead
+    // of throwing on the .alerts.length read.
+    mockFetchOk({
+      status: 'success',
+      data: {
+        groups: [
+          {
+            name: 'g1',
+            rules: [
+              { name: 'Never fired', state: 'inactive' }, // alerts undefined
+              { name: 'Has firing', state: 'firing', alerts: [{ state: 'firing', labels: { k: 'v' } }] },
+            ],
+          },
+        ],
+      },
+    });
+    const result = await fetchAlertRules();
+    expect(result.error).toBeUndefined();
+    expect(result.alerts.length).toBe(1);
+    expect(result.alerts[0].ruleName).toBe('Has firing');
+  });
+
+  test('group without rules[] is skipped cleanly', async () => {
+    mockFetchOk({
+      status: 'success',
+      data: {
+        groups: [
+          { name: 'g1' }, // no rules field
+          { name: 'g2', rules: [{ name: 'R', state: 'firing', alerts: [{ state: 'firing', labels: {} }] }] },
+        ],
+      },
+    });
+    const result = await fetchAlertRules();
+    expect(result.alerts.length).toBe(1);
+  });
 });
 
 describe('matchAlertsToNode', () => {

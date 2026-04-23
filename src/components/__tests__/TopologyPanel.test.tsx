@@ -20,18 +20,107 @@ jest.mock('@grafana/runtime', () => ({
 }));
 
 // Stub the canvas — we don't need the real SVG renderer in panel shell tests.
+// Extended: also exposes `edgeStates` as JSON + callback-triggering buttons so
+// tests can exercise the panel's popup / context-menu / edit-request flows
+// without rendering the real SVG canvas.
 jest.mock('../TopologyCanvas', () => {
   const React = require('react');
   return {
-    TopologyCanvas: (props: { nodes: unknown[]; edges: unknown[]; groups: unknown[] }) =>
-      React.createElement('div', {
-        'data-testid': 'canvas',
-        'data-node-count': (props.nodes || []).length,
-        'data-edge-count': (props.edges || []).length,
-        'data-group-count': (props.groups || []).length,
-      }),
+    TopologyCanvas: (props: {
+      nodes: Array<{ id: string }>;
+      edges: Array<{ id: string }>;
+      groups: unknown[];
+      edgeStates?: Map<string, { color: string; status: string }>;
+      onNodeToggle?: (id: string) => void;
+      onEdgeClick?: (id: string, x: number, y: number) => void;
+      onNodeContextMenu?: (id: string, x: number, y: number) => void;
+      onNodeDoubleClick?: (id: string) => void;
+    }) => {
+      const edgeStatesArr = Array.from((props.edgeStates || new Map()).entries()).map(
+        ([id, s]) => ({ id, color: s.color, status: s.status })
+      );
+      const firstNodeId = props.nodes?.[0]?.id;
+      const firstEdgeId = props.edges?.[0]?.id;
+      return React.createElement(
+        'div',
+        {
+          'data-testid': 'canvas',
+          'data-node-count': (props.nodes || []).length,
+          'data-edge-count': (props.edges || []).length,
+          'data-group-count': (props.groups || []).length,
+          'data-edge-states': JSON.stringify(edgeStatesArr),
+        },
+        firstNodeId &&
+          React.createElement(
+            'button',
+            {
+              key: 'click-node',
+              'data-testid': 'canvas-trigger-click-node',
+              // stopPropagation matches real canvas behavior — otherwise
+              // the click bubbles to TopologyPanel's outer onClick=closeAll
+              // and cancels the popup we just opened.
+              onClick: (e: React.MouseEvent) => {
+                e.stopPropagation();
+                props.onNodeToggle?.(firstNodeId);
+              },
+            },
+            'click node'
+          ),
+        firstNodeId &&
+          React.createElement(
+            'button',
+            {
+              key: 'ctx-node',
+              'data-testid': 'canvas-trigger-ctx-node',
+              onClick: (e: React.MouseEvent) => {
+                e.stopPropagation();
+                props.onNodeContextMenu?.(firstNodeId, 0, 0);
+              },
+            },
+            'ctx node'
+          ),
+        firstNodeId &&
+          React.createElement(
+            'button',
+            {
+              key: 'dbl-node',
+              'data-testid': 'canvas-trigger-dbl-node',
+              onClick: (e: React.MouseEvent) => {
+                e.stopPropagation();
+                props.onNodeDoubleClick?.(firstNodeId);
+              },
+            },
+            'dbl node'
+          ),
+        firstEdgeId &&
+          React.createElement(
+            'button',
+            {
+              key: 'click-edge',
+              'data-testid': 'canvas-trigger-click-edge',
+              onClick: (e: React.MouseEvent) => {
+                e.stopPropagation();
+                props.onEdgeClick?.(firstEdgeId, 0, 0);
+              },
+            },
+            'click edge'
+          )
+      );
+    },
   };
 });
+
+// Mock the self-queries hook so tests can inject failure/success maps
+// without patching global fetch. Default return: everything empty.
+const selfQueriesMock = jest.fn(() => ({
+  data: new Map(),
+  isLoading: false,
+  failures: new Map(),
+}));
+jest.mock('../../hooks/useSelfQueries', () => ({
+  useSelfQueries: (...args: unknown[]) =>
+    (selfQueriesMock as unknown as (...a: unknown[]) => unknown)(...args),
+}));
 
 // Stub NodePopup — rendered only when popupNodeId is set, and the popup itself
 // is independently tested in NodePopup.test.tsx.
@@ -40,6 +129,19 @@ jest.mock('../NodePopup', () => {
   return {
     NodePopup: (props: { node: { name: string } }) =>
       React.createElement('div', { 'data-testid': 'popup' }, props.node.name),
+  };
+});
+
+// Stub EdgePopup — same rationale as NodePopup stub.
+jest.mock('../EdgePopup', () => {
+  const React = require('react');
+  return {
+    EdgePopup: (props: { sourceName: string; targetName: string }) =>
+      React.createElement(
+        'div',
+        { 'data-testid': 'edge-popup' },
+        `${props.sourceName}-${props.targetName}`
+      ),
   };
 });
 
@@ -85,6 +187,12 @@ beforeEach(() => {
     ok: true,
     json: async () => ({ data: { result: [] } }),
   });
+  // Reset selfQueriesMock to empty default each test
+  selfQueriesMock.mockImplementation(() => ({
+    data: new Map(),
+    isLoading: false,
+    failures: new Map(),
+  }));
 });
 
 afterEach(() => {
@@ -230,5 +338,214 @@ describe('TopologyPanel — load example banner', () => {
     fireEvent.click(screen.getByText('Load example'));
     fireEvent.click(screen.getByLabelText('Dismiss example banner'));
     expect(screen.queryByText(/Metrics are visual mocks/)).not.toBeInTheDocument();
+  });
+});
+
+// ─── Stale pill (self-query failure indicator) ───────────────────────────
+//
+// TopologyPanel sums `failures.size` from useSelfQueries and renders a
+// "⚠ N stale" pill when any failures exist. Previously only the zero-case
+// was asserted — this test exercises the non-zero branch.
+describe('TopologyPanel — stale pill', () => {
+  test('renders "⚠ N stale" when useSelfQueries returns failures', () => {
+    selfQueriesMock.mockImplementation(() => ({
+      data: new Map(),
+      isLoading: false,
+      failures: new Map([['m1', 'http'], ['m2', 'network']]),
+    }));
+    render(<TopologyPanel {...asPanelProps(makePanelProps())} />);
+    expect(screen.getByText(/2 stale/)).toBeInTheDocument();
+  });
+
+  test('no stale pill when failures map is empty', () => {
+    render(<TopologyPanel {...asPanelProps(makePanelProps())} />);
+    expect(screen.queryByText(/ stale/)).toBeNull();
+  });
+});
+
+// ─── Propagated edge coloring (upstream-of-critical) ─────────────────────
+//
+// When a downstream node has critical status, TopologyPanel's edgeStates
+// memo replaces the edge's color with STATUS_COLORS.degraded via the
+// `propagateStatus` helper. Asserted by inspecting the stub canvas's
+// serialized `data-edge-states`.
+describe('TopologyPanel — propagated edge coloring', () => {
+  test('edge pointing to a critical node renders with degraded color', () => {
+    const props = makePanelProps({
+      nodes: [
+        {
+          id: 'n-src', name: 'src', role: '', type: 'server', metrics: [], compact: false,
+          position: { x: 0, y: 0 },
+        },
+        {
+          id: 'n-tgt', name: 'tgt', role: '', type: 'server', compact: false,
+          position: { x: 0, y: 0 },
+          metrics: [{
+            id: 'm1', label: 'load', datasourceUid: '', query: '',
+            format: '${value}', section: 'g', isSummary: true, showSparkline: false,
+            thresholds: [
+              { value: 0, color: 'green' },
+              { value: 70, color: 'yellow' },
+              { value: 90, color: 'red' },
+            ],
+          }],
+        },
+      ],
+      edges: [
+        {
+          id: 'e-1', sourceId: 'n-src', targetId: 'n-tgt', type: 'traffic',
+          thicknessMode: 'fixed', thicknessMin: 1.5, thicknessMax: 4,
+          thresholds: [{ value: 0, color: 'green' }],
+          flowAnimation: false, bidirectional: false,
+          anchorSource: 'auto', anchorTarget: 'auto',
+          // Give the edge its own metric so calculateEdgeStatus returns
+          // 'healthy' (not 'nodata'). Propagation only overrides healthy
+          // edges (propagatedEdgeIds ∩ status === 'healthy' → 'degraded').
+          metric: { datasourceUid: '', query: '', alias: 'e-1-metric' },
+        },
+      ],
+    });
+    // Inject a frame whose refId matches the node-metric id so nodeStates picks
+    // up value=95, crosses the red threshold, and marks n-tgt critical.
+    // Also inject a frame for the edge metric so its status becomes 'healthy'.
+    (props as { data: unknown }).data = {
+      series: [
+        {
+          refId: 'm1',
+          fields: [
+            { name: 'time', type: 'time', values: [0] },
+            { name: 'v', type: 'number', values: [95] },
+          ],
+        },
+        {
+          refId: 'e-1',
+          fields: [
+            { name: 'time', type: 'time', values: [0] },
+            { name: 'v', type: 'number', values: [10] },
+          ],
+        },
+      ],
+      state: 'Done',
+      timeRange: {},
+    };
+    render(<TopologyPanel {...asPanelProps(props)} />);
+    const canvas = screen.getByTestId('canvas');
+    const serialized = JSON.parse(canvas.getAttribute('data-edge-states') || '[]') as Array<{
+      id: string; color: string; status: string;
+    }>;
+    const edge = serialized.find((e) => e.id === 'e-1');
+    expect(edge).toBeDefined();
+    // STATUS_COLORS.degraded === '#bf616a' — propagation override kicked in.
+    expect(edge!.color).toBe('#bf616a');
+  });
+});
+
+// ─── Orphan edge cleanup side effect ─────────────────────────────────────
+//
+// NodesEditor emits `emitOrphanEdgeCleanup(deletedId)` after a node delete.
+// TopologyPanel subscribes and, after a 0-tick defer, filters edges that
+// reference the deleted node and fires onOptionsChange. This locks the
+// cross-subtree cleanup contract.
+describe('TopologyPanel — orphan edge cleanup', () => {
+  test('onOrphanEdgeCleanup fires onOptionsChange with filtered edges', async () => {
+    const { emitOrphanEdgeCleanup } = await import('../../utils/panelEvents');
+    const onOptionsChange = jest.fn();
+    const props = {
+      ...makePanelProps({
+        nodes: [
+          { id: 'n-a', name: 'A', role: '', type: 'server', metrics: [], position: { x: 0, y: 0 }, compact: false },
+          { id: 'n-b', name: 'B', role: '', type: 'server', metrics: [], position: { x: 0, y: 0 }, compact: false },
+        ],
+        edges: [
+          {
+            id: 'e-1', sourceId: 'n-a', targetId: 'n-b', type: 'traffic',
+            thicknessMode: 'fixed', thicknessMin: 1.5, thicknessMax: 4,
+            thresholds: [], flowAnimation: false, bidirectional: false,
+            anchorSource: 'auto', anchorTarget: 'auto',
+          },
+          {
+            id: 'e-2', sourceId: 'n-b', targetId: 'n-a', type: 'traffic',
+            thicknessMode: 'fixed', thicknessMin: 1.5, thicknessMax: 4,
+            thresholds: [], flowAnimation: false, bidirectional: false,
+            anchorSource: 'auto', anchorTarget: 'auto',
+          },
+        ],
+      }),
+      onOptionsChange,
+    };
+    render(<TopologyPanel {...asPanelProps(props)} />);
+    // Fire the cleanup signal. TopologyPanel's subscriber defers via
+    // setTimeout(0) before calling onOptionsChange.
+    await new Promise<void>((resolve) => {
+      emitOrphanEdgeCleanup('n-a');
+      setTimeout(() => resolve(), 0);
+    });
+    expect(onOptionsChange).toHaveBeenCalled();
+    const lastCall = onOptionsChange.mock.calls.at(-1)![0];
+    // Both edges referenced n-a (one as source, one as target), so both removed.
+    expect(lastCall.edges).toEqual([]);
+  });
+});
+
+// ─── Popup / context-menu mutual exclusion ────────────────────────────
+//
+// Opening one floating UI must close the others. TopologyPanel's handlers
+// (handleNodeToggle, handleEdgeClick, handleNodeContextMenu) all explicitly
+// null-out the other state slots.
+describe('TopologyPanel — popup mutual exclusion', () => {
+  function seededProps() {
+    return makePanelProps({
+      nodes: [{
+        id: 'n-a', name: 'Alpha', role: '', type: 'server', metrics: [],
+        position: { x: 0, y: 0 }, compact: false,
+      }],
+      edges: [{
+        id: 'e-1', sourceId: 'n-a', targetId: 'n-a', type: 'traffic',
+        thicknessMode: 'fixed', thicknessMin: 1.5, thicknessMax: 4,
+        thresholds: [], flowAnimation: false, bidirectional: false,
+        anchorSource: 'auto', anchorTarget: 'auto',
+      }],
+    });
+  }
+
+  test('clicking an edge closes any open node popup', () => {
+    render(<TopologyPanel {...asPanelProps(seededProps())} />);
+    fireEvent.click(screen.getByTestId('canvas-trigger-click-node'));
+    expect(screen.getByTestId('popup')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('canvas-trigger-click-edge'));
+    expect(screen.queryByTestId('popup')).toBeNull();
+    expect(screen.getByTestId('edge-popup')).toBeInTheDocument();
+  });
+
+  test('opening a context menu closes both popups', () => {
+    render(<TopologyPanel {...asPanelProps(seededProps())} />);
+    fireEvent.click(screen.getByTestId('canvas-trigger-click-node'));
+    expect(screen.getByTestId('popup')).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId('canvas-trigger-ctx-node'));
+    expect(screen.queryByTestId('popup')).toBeNull();
+  });
+});
+
+// ─── Canvas double-click → emitNodeEditRequest ───────────────────────────
+//
+// handleNodeDoubleClick in TopologyPanel emits the edit-request so the
+// sidebar NodesEditor scrolls + expands the card.
+describe('TopologyPanel — double-click edit request', () => {
+  test('double-click on canvas node emits onNodeEditRequest', async () => {
+    const { onNodeEditRequest } = await import('../../utils/panelEvents');
+    const received: string[] = [];
+    const unsub = onNodeEditRequest((id) => received.push(id));
+    try {
+      render(<TopologyPanel {...asPanelProps(makePanelProps({
+        nodes: [{
+          id: 'n-x', name: 'X', role: '', type: 'server', metrics: [],
+          position: { x: 0, y: 0 }, compact: false,
+        }],
+      }))} />);
+      fireEvent.click(screen.getByTestId('canvas-trigger-dbl-node'));
+      expect(received).toEqual(['n-x']);
+    } finally {
+      unsub();
+    }
   });
 });

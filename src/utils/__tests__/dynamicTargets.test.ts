@@ -177,6 +177,33 @@ describe('resolveCloudWatchTargets', () => {
     const result = await resolveCloudWatchTargets('ds-1', { namespace: 'X', metricName: 'Y' }, 'Label');
     expect(result).toEqual([]);
   });
+
+  test('regex-escapes special characters in nodeIdLabel', async () => {
+    // Without the `.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')` escape at
+    // dynamicTargets.ts:128, a label like 'Load.Balancer' would build
+    // a regex where '.' matches any character, producing false-positive
+    // extractions from unrelated frame names. This test pins the escape.
+    mockFetchOk({
+      results: {
+        A: {
+          frames: [
+            // Frame 1: would only match the escaped regex for 'Load.Balancer' literal.
+            { schema: { name: 'RequestCount {Load.Balancer=app/alb-1/abc}' } },
+            // Frame 2: has a value in the 'LoadXBalancer' slot (X not literal dot).
+            //   With a BUGGY unescaped regex, '.' matches 'X' so 'alb-bogus' would
+            //   leak into results. With the escape in place, only frame 1 matches.
+            { schema: { name: 'RequestCount {LoadXBalancer=alb-bogus}' } },
+          ],
+        },
+      },
+    });
+    const result = await resolveCloudWatchTargets(
+      'ds-1',
+      { namespace: 'AWS/ApplicationELB', metricName: 'RequestCount' },
+      'Load.Balancer'
+    );
+    expect(result).toEqual(['app/alb-1/abc']);
+  });
 });
 
 describe('resolveInfinityTargets', () => {
