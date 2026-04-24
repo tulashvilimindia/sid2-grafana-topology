@@ -1,6 +1,6 @@
 {
   "name": "mtulashvili-sre-topology-panel",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "E2E Topology Diagram Panel with live metrics, drag-and-drop, animated flow connections, and expandable metric panels",
   "scripts": {
     "build": "cross-env TS_NODE_COMPILER_OPTIONS=\"{\\\"module\\\":\\\"commonjs\\\"}\" webpack -c ./.config/webpack/webpack.config.ts --env production",

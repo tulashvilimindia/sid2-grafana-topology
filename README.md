@@ -7,8 +7,8 @@ Built by Mindia Tulashvili.
 ![Grafana 12+](https://img.shields.io/badge/Grafana-12.0%2B-orange)
 ![License](https://img.shields.io/badge/License-Apache%202.0-blue)
 ![Plugin Type](https://img.shields.io/badge/Type-Panel-green)
-![Tests](https://img.shields.io/badge/tests-242%20passing-green)
-![Bundle](https://img.shields.io/badge/bundle-162KB-blue)
+![Tests](https://img.shields.io/badge/tests-480%20passing-green)
+![Bundle](https://img.shields.io/badge/bundle-185KB-blue)
 
 ---
 
@@ -287,7 +287,7 @@ Each topology consists of three arrays: **`nodes`**, **`edges`**, and **`groups`
 | `id` | string | Unique node identifier |
 | `name` | string | Display name |
 | `role` | string | Short role/description shown below name |
-| `type` | enum | Node type: `cloudflare`, `firewall`, `loadbalancer`, `virtualserver`, `pool`, `server`, `database`, `cache`, `queue`, `alb`, `nlb`, `nat`, `kubernetes`, `accelerator`, `logs`, `probe`, `custom` |
+| `type` | enum | Node type — 37 values. Generic: `cloudflare`, `firewall`, `loadbalancer`, `virtualserver`, `pool`, `server`, `database`, `cache`, `queue`, `alb`, `nlb`, `nat`, `kubernetes`, `accelerator`, `logs`, `probe`, `custom`. Cloud-native k8s: `aks`, `eks`, `gke`. Serverless: `lambda`, `function`, `cloudrun`. Edge/API/WAF: `afd`, `appgw`, `apigw`, `waf`. Messaging: `kafka`, `pubsub`. Storage: `storage`, `elasticsearch`, `warehouse`. Identity: `idp`, `secrets`. Network: `dns`, `vpn`, `bastion`. See the "Node Types and Icons" section below for the full mapping. |
 | `position` | {x, y} | Canvas position (auto-calculated if {100, 100}) |
 | `compact` | boolean | Compact mini-node style (for server pools) |
 | `width` | number | Fixed width in pixels (optional) |
@@ -390,6 +390,14 @@ curl -s http://your-grafana/api/datasources | jq '.[].uid'
 
 ### Node Types and Icons
 
+37 built-in types covering generic infrastructure, cloud-native k8s brands,
+serverless compute, edge/API/WAF, messaging, storage & analytics, identity &
+secrets, and network primitives. Each ships with an icon + Nord-palette
+default color that users can override per node via `iconOverride` and
+`colorOverride` fields.
+
+**Generic infrastructure**
+
 | Type | Icon | Default Color | Typical Use |
 |------|------|---------------|-------------|
 | `cloudflare` | CF | Gold | CDN / WAF edge |
@@ -409,6 +417,61 @@ curl -s http://your-grafana/api/datasources | jq '.[].uid'
 | `logs` | LOG | Blue | Log aggregator (Loki, CloudWatch Logs, etc.) |
 | `probe` | PRB | Cyan | Synthetic probe / uptime monitor |
 | `custom` | ? | Gray | Custom node type |
+
+**Cloud-native k8s brands**
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `aks` | AKS | Azure blue | Azure Kubernetes Service |
+| `eks` | EKS | AWS orange | Amazon EKS |
+| `gke` | GKE | GCP blue | Google Kubernetes Engine |
+
+**Serverless compute**
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `lambda` | LAM | AWS orange | AWS Lambda |
+| `function` | FN | Cyan | Generic serverless function |
+| `cloudrun` | CR | GCP blue | GCP Cloud Run |
+
+**Edge / API / WAF**
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `afd` | AFD | Azure blue | Azure Front Door |
+| `appgw` | AGW | Azure blue | Azure Application Gateway |
+| `apigw` | APIG | AWS orange | AWS API Gateway |
+| `waf` | WAF | Red | Web Application Firewall |
+
+**Messaging** (distinct from the generic `queue`)
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `kafka` | KAF | Red | Apache Kafka |
+| `pubsub` | PS | GCP blue | GCP Pub/Sub |
+
+**Storage & analytics**
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `storage` | STG | Blue | Object storage (S3, GCS, Azure Blob) |
+| `elasticsearch` | ES | Green | Elasticsearch / OpenSearch |
+| `warehouse` | DW | Blue | Data warehouse (Redshift, BigQuery, Snowflake) |
+
+**Identity & secrets**
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `idp` | IDP | Purple | Identity provider (Okta, Auth0, Azure AD) |
+| `secrets` | SEC | Gold | Secrets vault (Vault, AWS SM, Key Vault) |
+
+**Network**
+
+| Type | Icon | Default Color | Typical Use |
+|------|------|---------------|-------------|
+| `dns` | DNS | Purple | DNS (Route 53, Cloudflare DNS) |
+| `vpn` | VPN | Purple | VPN gateway |
+| `bastion` | BAS | Gray | Bastion / jump host |
 
 ### Edge Visual Behavior
 
@@ -498,6 +561,9 @@ src/
 | `npm run typecheck` | TypeScript type check (no emit) |
 | `npm run server` | Start Docker Compose Grafana (`docker compose up --build`) |
 | `npm run sign` | Sign the plugin via `@grafana/sign-plugin` (requires `GRAFANA_ACCESS_POLICY_TOKEN` and `GRAFANA_ROOT_URLS` env vars) |
+| `npm run e2e` | Run Playwright E2E suite against `GRAFANA_URL` (default `http://localhost:13100`) — requires `npm run server` + `npx playwright install chromium` first. See `e2e/README.md`. |
+| `npm run e2e:list` | Dry-run E2E spec discovery without connecting to Grafana (useful for CI config validation) |
+| `npm run analyze` | Build + emit `webpack-bundle-analyzer` report at `docs/bundle-report-v1.1.html` |
 
 ### Technology Stack
 
@@ -512,7 +578,7 @@ Every dependency listed with its exact resolved version, what it does in this pr
 | **@grafana/data** | 12.0.10 | Grafana Plugin SDK — core data types. Provides `PanelPlugin` class for plugin registration, `PanelProps` interface for panel component props, `DataFrames` for query result structure, `FieldType` for data matching, and `StandardEditorProps` for custom editors. | `module.ts` (PanelPlugin + setPanelOptions), `TopologyPanel.tsx` (PanelProps, data.series), all editor components |
 | **@grafana/runtime** | 12.0.10 | Grafana Plugin SDK — runtime services. Provides `getDataSourceSrv()` for datasource instance lookup (used by `detectDatasourceType`) and `replaceVariables()` for template variable interpolation. | `datasourceQuery.ts`, `useSelfQueries.ts` |
 | **@grafana/ui** | 12.0.10 | Grafana Plugin SDK — React component library. Provides themed components (`Button`, `IconButton`, `Input`, `Select`, `TextArea`, `CollapsableSection`, `Checkbox`, `DataSourcePicker`) used throughout editor components. | `NodeCard.tsx`, `EdgeCard.tsx`, `GroupCard.tsx`, `MetricEditor.tsx`, `ThresholdList.tsx`, `NodePopup.tsx` (Icon) |
-| **Lodash** | 4.17.21 | Utility library. Loaded as external by Grafana. Currently unused in plugin source but available for future use. | Declared external in webpack |
+| **Lodash** | 4.18.1 | Utility library. Loaded as external by Grafana. Currently unused in plugin source but available for future use. Pinned to 4.18.1 via `overrides` in package.json (npm-audit mitigation). | Declared external in webpack |
 
 #### Grafana Plugin SDK (Build & Configuration)
 
@@ -681,7 +747,7 @@ auto-dismisses after 12 seconds.
 - [x] **Example topology explainer banner** — 12s dismissible after "Load example"
 - [x] **Mobile responsive layout** — `@media (max-width: 768px)` bottom-sheet popup, wrapped toolbar, `touch-action` pan/pinch-zoom
 - [x] **Reduced-motion accessibility** — `@media (prefers-reduced-motion: reduce)` disables flow and pulse animations
-- [x] **242 unit tests** across 12 suites (edges, layout, viewport, viewportStore, datasourceQuery, alertRules, dynamicTargets, panelEvents, NodePopup, EdgePopup, ContextMenu, TopologyPanel)
+- [x] **480 unit tests** across 30 Jest suites + **3 Playwright E2E smoke specs** via `@grafana/plugin-e2e` (covers every `src/` file: utils, hooks, editor components + list editors, canvas, popups, context menu, panel shell)
 - [x] **GitHub Actions CI** — typecheck + lint + test + build on every push; tag-triggered signing workflow with env-driven `GRAFANA_ROOT_URLS` secret
 - [x] **Cross-platform build** — `cross-env` shim so Windows CMD works with the `TS_NODE_COMPILER_OPTIONS` env var
 - [x] **SVG overflow clipping fix** — edges past the layout box now render correctly after Auto Layout + Fit
@@ -694,9 +760,20 @@ auto-dismisses after 12 seconds.
 - [x] **Drag-to-connect directly on canvas** — Shift+drag from one node to another in edit mode creates a new edge via `onOptionsChange` and auto-opens its card in the sidebar editor
 - [x] **`emitEdgeEditRequest` cross-subtree channel** — 5th `panelEvents` pub/sub channel so `EdgesEditor` can subscribe and scroll+expand the matching edge card on request, mirror of the existing node-edit channel
 
+**Shipped in 1.0.1** (2026-04-23 audit + test-gap work):
+
+- [x] **Template variable interpolation across all 3 datasource types** — `replaceVars` is now threaded through every user-controllable string of `DatasourceQueryConfig` via `interpolateQueryConfig` (`datasourceQuery.ts:69-92`): CloudWatch `namespace` / `metricName` / `stat` / `dimensions` keys AND values, and Infinity `url` / `body` / `rootSelector` / `method`. Prometheus query strings already worked.
+- [x] **Time-travel querying** — toolbar dropdown with Live / 5m / 15m / 30m / 1h / 3h / 6h / 24h. Computes `historicalTime = now + offset*60` and threads it through `useSelfQueries → queryDatasource → queryPrometheus` which appends `&time=<ts>` to the instant-query URL. CloudWatch and Infinity ignore `historicalTime` (no natural historical-query shape at the API level).
+- [x] **Per-node-type health-bar strip in toolbar** — one colored dot per distinct node type in the panel, tooltipped with worst status + count. Driven by `isWorseStatus` ranking.
+- [x] **Upstream status propagation** — edges pointing at a critical/degraded/down node render in degraded colour (`propagateStatus` in `utils/edges.ts`). Narrowed on 2026-04-23 to only critical/degraded/down (warning no longer propagates) so the critical path stays visually distinct on dense topologies.
+- [x] **CloudWatch autocomplete in editors** — region picker (28 AWS regions + datasource-default fallback), cascading namespace → metric name → dimension-key dropdowns backed by Grafana's `/api/datasources/uid/<uid>/resources/*` endpoints. Live error banner when AWS credentials are missing.
+- [x] **`node.description` / `edge.description` rendering** — the `Notes / Annotation` TextArea in NodeCard + EdgeCard now renders in NodePopup / EdgePopup when set (previously persisted but never displayed).
+- [x] **+20 cloud-native node types** — `aks`, `eks`, `gke`, `lambda`, `function`, `cloudrun`, `afd`, `appgw`, `apigw`, `waf`, `kafka`, `pubsub`, `storage`, `elasticsearch`, `warehouse`, `idp`, `secrets`, `dns`, `vpn`, `bastion`. Brings the total to **37 built-in types** (up from 17 at 1.0.0). Plus per-node `colorOverride` + `iconOverride` for fully custom nodes.
+- [x] **Bug fixes with regression tests**: (1) viewport store survives edit↔view remount, (2) CloudWatch `region` picker actually reaches the API payload, (3) pan-gesture no longer races `pointerup` under React 18 batching, (4) webpack `%VERSION%`/`%TODAY%` placeholders work at build time, (5) the documented BFS queued-set guard is locked in against regression.
+- [x] **E2E scaffolding via `@grafana/plugin-e2e`** — Playwright config at repo root, smoke specs in `e2e/`, `npm run e2e` + `npm run e2e:list` scripts. Runs against the Docker dev stack on `:13100`.
+
 **Partially shipped — needs follow-up:**
 
-- [~] **Template variable support** — `replaceVariables` from `PanelProps` is threaded through `TopologyPanel → useSelfQueries → queryDatasource → replaceVars(query)` and applied to **Prometheus query strings** (`src/utils/datasourceQuery.ts:67`). **Not yet** applied to CloudWatch `queryConfig.namespace` / `metricName` / `dimensions` values, or to Infinity `queryConfig.url` / `body`. Extending the interpolation across all three datasource types is straightforward (map each string field through `replaceVars`) but hasn't been done.
 - [~] **Plugin signing** — the release workflow in `.github/workflows/release.yml` already runs `@grafana/sign-plugin` on tag push with an env-driven `GRAFANA_ROOT_URLS` secret (Task 4.3 in the GA plan). The plugin build zip can be signed today. **Public Grafana catalog submission** itself is a separate manual process (submit the signed zip + `plugin.json` + metadata to Grafana Labs via their plugin submission form) and has not been done — the plugin is currently installed as an unsigned allowlisted plugin.
 
 **Still on the roadmap:**
